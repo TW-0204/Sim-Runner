@@ -41,8 +41,8 @@ replace_once(
 )
 replace_once(
     "src/lib/simulation/game.ts",
-    '''  applyWormholeTurn,\n  armWormholeOnAcquisition,\n''',
-    '''  applyWormholeTurn,\n  armGachaMachineOnAcquisition,\n  armWormholeOnAcquisition,\n''',
+    '''  applyTurtleAndHarePlacement,\n  armWormholeOnAcquisition,\n''',
+    '''  applyTurtleAndHarePlacement,\n  armGachaMachineOnAcquisition,\n  armWormholeOnAcquisition,\n''',
 )
 replace_once(
     "src/lib/simulation/game.ts",
