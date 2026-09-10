@@ -1,0 +1,39 @@
+name: Special Precision 1K
+
+on:
+  push:
+    paths:
+      - '.github/workflows/special-precision-1k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        augment: [P02, P04, P14, P16]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Run forced Special precision
+        run: npm run balance:precision-special -- --augment "${{ matrix.augment }}" --games 1000
+
+      - name: Upload precision result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: precision-${{ matrix.augment }}-1k
+          path: precision-results/
+          if-no-files-found: warn
+          retention-days: 7
