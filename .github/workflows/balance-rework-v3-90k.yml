@@ -1,0 +1,196 @@
+name: Balance Rework V3 Independent 90K
+
+on:
+  push:
+    paths:
+      - '.github/workflows/balance-rework-v3-90k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        include:
+          - player_count: 2
+            batch_id: 1
+            seed_start: 800000
+          - player_count: 2
+            batch_id: 2
+            seed_start: 810000
+          - player_count: 2
+            batch_id: 3
+            seed_start: 820000
+          - player_count: 3
+            batch_id: 1
+            seed_start: 900000
+          - player_count: 3
+            batch_id: 2
+            seed_start: 910000
+          - player_count: 3
+            batch_id: 3
+            seed_start: 920000
+          - player_count: 4
+            batch_id: 1
+            seed_start: 1000000
+          - player_count: 4
+            batch_id: 2
+            seed_start: 1010000
+          - player_count: 4
+            batch_id: 3
+            seed_start: 1020000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Apply confirmed balance patch
+        run: python scripts/apply-confirmed-balance-v1.py
+      - name: Apply G15 redesign and G01 cap
+        run: python scripts/apply-g15-g01-v5.py
+      - name: Apply G01 and G15 v6 tuning
+        run: python scripts/apply-g01-g15-v6.py
+      - name: Apply balance v7 tuning
+        run: python scripts/apply-balance-v7.py
+      - name: Apply ideas batch 1
+        run: python scripts/apply-ideas-batch1.py
+      - name: Apply ideas batch 2
+        run: python scripts/apply-ideas-batch2.py
+      - name: Apply ideas batch 3
+        run: python scripts/apply-ideas-batch3.py
+      - name: Apply ideas batch 4
+        run: python scripts/apply-ideas-batch4.py
+      - name: Apply ideas batch 5
+        run: python scripts/apply-ideas-batch5.py
+      - name: Apply ideas batch 6
+        run: python scripts/apply-ideas-batch6.py
+      - name: Apply ideas batch 7
+        run: python scripts/apply-ideas-batch7.py
+      - name: Apply ideas batch 8
+        run: python scripts/apply-ideas-batch8.py
+      - name: Apply A13 G13 regression fix
+        run: python scripts/apply-ideas-batch8-fix.py
+      - name: Apply ideas batch 9
+        run: python scripts/apply-ideas-batch9.py
+      - name: Apply ideas batch 10
+        run: python scripts/apply-ideas-batch10.py
+      - name: Apply ideas batch 11
+        run: python scripts/apply-ideas-batch11.py
+      - name: Apply rough balance v1
+        run: python scripts/apply-augment-rough-balance-v1.py
+      - name: Apply rough balance v2
+        run: python scripts/apply-augment-rough-balance-v2.py
+      - name: Apply balance rework v3
+        run: python scripts/run-balance-rework-v3.py
+      - name: Apply one-turn plague duration
+        run: python scripts/apply-balance-rework-v3-plague-duration.py
+      - name: Apply plague no-move regression fix
+        run: python scripts/apply-balance-rework-v3-stall-fix.py
+      - name: Verify v3 mechanics
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
+
+      - name: Run independent 10K batch
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 10000
+          --output-dir independent-results
+          --fail-on-incomplete
+
+      - name: Upload batch summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rework-v3-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: independent-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  merge:
+    needs: batch
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Download all batch summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rework-v3-*
+          path: independent-results
+          merge-multiple: true
+
+      - name: Apply confirmed balance patch
+        run: python scripts/apply-confirmed-balance-v1.py
+      - name: Apply G15 redesign and G01 cap
+        run: python scripts/apply-g15-g01-v5.py
+      - name: Apply G01 and G15 v6 tuning
+        run: python scripts/apply-g01-g15-v6.py
+      - name: Apply balance v7 tuning
+        run: python scripts/apply-balance-v7.py
+      - name: Apply ideas batch 1
+        run: python scripts/apply-ideas-batch1.py
+      - name: Apply ideas batch 2
+        run: python scripts/apply-ideas-batch2.py
+      - name: Apply ideas batch 3
+        run: python scripts/apply-ideas-batch3.py
+      - name: Apply ideas batch 4
+        run: python scripts/apply-ideas-batch4.py
+      - name: Apply ideas batch 5
+        run: python scripts/apply-ideas-batch5.py
+      - name: Apply ideas batch 6
+        run: python scripts/apply-ideas-batch6.py
+      - name: Apply ideas batch 7
+        run: python scripts/apply-ideas-batch7.py
+      - name: Apply ideas batch 8
+        run: python scripts/apply-ideas-batch8.py
+      - name: Apply A13 G13 regression fix
+        run: python scripts/apply-ideas-batch8-fix.py
+      - name: Apply ideas batch 9
+        run: python scripts/apply-ideas-batch9.py
+      - name: Apply ideas batch 10
+        run: python scripts/apply-ideas-batch10.py
+      - name: Apply ideas batch 11
+        run: python scripts/apply-ideas-batch11.py
+      - name: Apply rough balance v1
+        run: python scripts/apply-augment-rough-balance-v1.py
+      - name: Apply rough balance v2
+        run: python scripts/apply-augment-rough-balance-v2.py
+      - name: Apply balance rework v3
+        run: python scripts/run-balance-rework-v3.py
+      - name: Apply one-turn plague duration
+        run: python scripts/apply-balance-rework-v3-plague-duration.py
+      - name: Apply plague no-move regression fix
+        run: python scripts/apply-balance-rework-v3-stall-fix.py
+
+      - name: Merge and analyze 9 independent batches
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
+          --input-dir independent-results
+          --output-dir independent-merged
+          --min-samples 200
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: balance-rework-v3-90k-merged
+          path: independent-merged/
+          if-no-files-found: error
+          retention-days: 14
