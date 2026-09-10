@@ -1,0 +1,49 @@
+name: Balance Quick Scan
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      games:
+        description: Games per player count
+        required: true
+        default: '1000'
+      min_samples:
+        description: Minimum owned-game samples before flagging
+        required: true
+        default: '20'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Show runtime
+        run: node --version
+
+      - name: Run 3K balance scan
+        env:
+          GAMES: ${{ github.event_name == 'workflow_dispatch' && inputs.games || '1000' }}
+          MIN_SAMPLES: ${{ github.event_name == 'workflow_dispatch' && inputs.min_samples || '20' }}
+        run: npm run balance:scan -- --ruleset two-aug-start-r4-special-slots-v2 --games "$GAMES" --min-samples "$MIN_SAMPLES" --fail-on-incomplete
+
+      - name: Upload balance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: balance-quick-scan-results
+          path: balance-results/
+          if-no-files-found: warn
+          retention-days: 7
