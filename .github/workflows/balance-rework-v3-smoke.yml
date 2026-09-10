@@ -6,6 +6,7 @@ on:
       - 'scripts/apply-balance-rework-v3.py'
       - 'scripts/run-balance-rework-v3.py'
       - 'scripts/balance-rework-v3-probe.ts'
+      - 'scripts/balance-rework-v3-stall-diagnose.ts'
       - '.github/workflows/balance-rework-v3-smoke.yml'
   workflow_dispatch:
 
@@ -67,3 +68,5 @@ jobs:
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --player-count 3 --games 100 --seed-start 710000 --output-dir balance-results/v3-3p
       - name: Run 4P smoke
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --player-count 4 --games 100 --seed-start 720000 --output-dir balance-results/v3-4p
+      - name: Diagnose stalled games
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-stall-diagnose.ts
