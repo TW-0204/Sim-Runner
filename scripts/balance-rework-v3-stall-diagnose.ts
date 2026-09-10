@@ -28,6 +28,17 @@ for (const { playerCount, seedStart } of cases) {
       results: engine?.results?.map((token) => ({ face: token.face, finalSteps: token.finalSteps, source: token.source })),
       acquisitions: result.acquisitions.map((entry) => `${entry.userId}:${entry.augmentId}`),
       ownedByUser: result.failureDiagnostics?.ownedByUser,
+      players: engine?.players.map((player) => ({
+        userId: player.userId,
+        pieces: player.pieces.map((piece) => ({
+          id: piece.id,
+          status: piece.status,
+          node: piece.node,
+          groupId: piece.groupId,
+          hasEntered: piece.hasEntered,
+          pathHistory: piece.pathHistory,
+        })),
+      })),
     }));
   }
   console.log(`[diagnose] ${playerCount}p stalled ${stalled}/100`);
