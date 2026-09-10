@@ -32,6 +32,7 @@ export const AUGMENTS: AugmentDefinition[] = [
   { id: "S13", name: "자리비움", tier: "silver", timing: "first", description: "2라운드 동안 턴을 쉬고, 이후 3번째 증강 전까지 기본 던지기 전진 이동량이 +1칸 증가합니다." },
   { id: "S14", name: "나 홀로 집에", tier: "silver", description: "갈림길에 정확히 도착한 말은 그 말의 다음 전진 이동량이 +1칸 증가합니다." },
   { id: "S15", name: "친구와 함께", tier: "silver", description: "이동을 마친 뒤 경로 기준 앞뒤 1칸의 아군 한 묶음을 불러와 업을 수 있습니다." },
+  { id: "S16", name: "낙!", tier: "silver", description: "모든 플레이어의 기본 던지기는 5% 확률로 낙이 됩니다. 자신의 낙은 대신 1칸 이동권을 얻습니다." },
 
   { id: "G01", name: "개판", tier: "gold", description: "개가 추가 던지기를 만들고, 윷과 모는 더 이상 추가 던지기를 만들지 않습니다." },
   { id: "G02", name: "사냥꾼 2", tier: "gold", family: "HUNTER", requires: "S01", description: "상대를 잡아 얻은 추가 던지기의 전진 이동량이 +2칸 증가합니다." },

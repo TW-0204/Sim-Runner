@@ -238,6 +238,12 @@ function parseBlockedNode(message: string, label: string) {
 function detectRollTriggers(input: DetectInput, events: Map<string, AugmentTriggerEvent>) {
   const ownedIds = input.ownedByUser[input.actorUserId] ?? [];
 
+  if (input.actionKind === "roll" && input.after.lastAction.includes("낙!")) {
+    for (const [ownerUserId, ids] of Object.entries(input.ownedByUser)) {
+      if (ids.includes("S16")) addMapEvent(events, ownerUserId, "S16");
+    }
+  }
+
   if (input.actionKind === "roll" && input.after.pendingRollChoice?.kind === "DUAL") {
     if (input.after.pendingRollChoice.reason === "COUNTER" && ownedIds.includes("S11")) {
       addMapEvent(events, input.actorUserId, "S11");

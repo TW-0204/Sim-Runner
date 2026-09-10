@@ -657,6 +657,35 @@ function resolveRollChoice(context: SimulationContext, engine: GameEngineState, 
 function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
   const before = structuredClone(engine);
+
+  const nakActive = Object.values(context.ownedByUser).some((ids) => ids.includes("S16"));
+  if (engine.pendingRolls[0] === "BASIC" && nakActive && context.rng.effect.next() < 0.05) {
+    const next = structuredClone(engine);
+    next.pendingRolls.shift();
+    const actorName = currentPlayer(next).displayName;
+    if (owned.includes("S16")) {
+      next.results.push({
+        id: nextTokenId(context, "nak-compensation"),
+        face: "MOVE1",
+        baseSteps: 1,
+        finalSteps: 1,
+        source: "AUGMENT",
+        suppressMovementBonuses: true,
+      });
+      next.stage = "MOVING";
+      next.lastAction = `${actorName}: 낙! · 1칸 이동권`;
+    } else if (next.pendingRolls.length > 0) {
+      next.stage = "AWAITING_ROLL";
+      next.lastAction = `${actorName}: 낙!`;
+    } else if (next.results.length > 0) {
+      next.stage = "MOVING";
+      next.lastAction = `${actorName}: 낙!`;
+    } else {
+      advanceTurnForVacancy(next);
+      next.lastAction = `${actorName}: 낙! · ${currentPlayer(next).displayName}의 턴`;
+    }
+    return finalizeAction(before, next, userId, context, "roll");
+  }
   if (engine.pendingRolls[0] === "BASIC" && owned.includes("P19") && godHandChargeCount(engine, userId, owned) > 0) {
     const next = applyGodHandRoll(engine, "MO", nextTokenId(context, "god-hand"), owned, actorSetups(context, userId));
     return finalizeAction(before, next, userId, context, "god_hand");
