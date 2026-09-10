@@ -1,0 +1,23 @@
+name: S16 Nak Smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/s16-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/s16
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Run S16 smoke
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 300 --min-samples 20 --output-dir balance-results/s16-smoke --fail-on-incomplete
