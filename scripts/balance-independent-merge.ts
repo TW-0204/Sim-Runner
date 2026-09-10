@@ -70,6 +70,19 @@ for (const playerCount of [2, 3, 4] as const) {
   if (count !== 3) throw new Error(`Expected 3 independent ${playerCount}p batches, found ${count}.`);
 }
 
+const catalogIds = new Set(AUGMENTS.map((augment) => augment.id));
+const observedIds = new Set<string>();
+for (const batch of batches) {
+  for (const augmentId of Object.keys(batch.summary.augmentWinStats ?? {})) observedIds.add(augmentId);
+}
+const missingCatalogIds = [...observedIds].filter((augmentId) => !catalogIds.has(augmentId)).sort();
+if (missingCatalogIds.length > 0) {
+  throw new Error(
+    `Batch results contain augment IDs missing from the active catalog: ${missingCatalogIds.join(", ")}. `
+    + "Apply the same balance patch chain in the merge job before running this script.",
+  );
+}
+
 const ruleset = getBalanceRuleset(rulesetId);
 const excludedIds = new Set(Object.values(ruleset.excludedAugmentIdsByLogicalPhase ?? {}).flatMap((ids) => ids ?? []));
 const totalGames = batches.reduce((sum, batch) => sum + batch.metadata.games, 0);
@@ -150,6 +163,8 @@ const markdown = [
   "- 구성: 2/3/4인 × 독립 10K 3배치 = 9개 job",
   `- 미완료 게임: ${totalIncomplete.toLocaleString()}판`,
   `- 최소 유효 보유 표본: ${minSamples.toLocaleString()}판`,
+  `- 활성 catalog 증강 수: ${AUGMENTS.length.toLocaleString()}개`,
+  `- 배치에서 관측된 증강 ID 수: ${observedIds.size.toLocaleString()}개`,
   "- 각 셀 첫 줄은 3배치 합산 승률, 둘째 줄은 독립 배치 3개의 승률, 셋째 줄은 배치 간 최대-최소 차이입니다.",
   "",
   "## Batch runtime / seed ranges",
@@ -174,6 +189,8 @@ const report = {
   totalGames,
   totalIncomplete,
   minSamples,
+  activeCatalogAugmentCount: AUGMENTS.length,
+  observedAugmentIdCount: observedIds.size,
   batches: batches.map((batch) => batch.metadata),
   rows,
 };
