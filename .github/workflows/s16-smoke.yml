@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/s16-smoke.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,8 +15,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: experiment/s16
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
