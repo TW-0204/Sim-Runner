@@ -1,0 +1,26 @@
+name: P04 Bottleneck Diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/p04-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Run P04 diagnostic
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/p04-diagnostic-run.ts --games 1000
