@@ -1,0 +1,30 @@
+name: Confirmed Balance v1 Quick Scan
+
+on:
+  push:
+    paths:
+      - 'scripts/apply-confirmed-balance-v1.py'
+      - '.github/workflows/confirmed-balance-v1-quick.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply confirmed balance patch
+        run: python scripts/apply-confirmed-balance-v1.py
+      - name: Run quick balance scan
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 3000 --min-samples 50 --output-dir balance-results/confirmed-v1-quick --fail-on-incomplete
+      - name: Upload quick scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: confirmed-balance-v1-quick
+          path: balance-results/confirmed-v1-quick
