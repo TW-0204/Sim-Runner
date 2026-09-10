@@ -10,4 +10,10 @@ if old not in source:
     raise SystemExit("Could not relax v3 sequential replacement helper")
 source = source.replace(old, new, 1)
 
+old_turtle = '''replace_regex(\n    "src/lib/game/engine.ts",\n    r'(turtleLockedUntilRoundByPiece\\?\\?= \\{\\};[\\s\\S]{0,240}?= engine\\.round \\+) 2;',\n    r'\\g<1> 3;',\n)'''
+new_turtle = '''replace_once(\n    "src/lib/game/engine.ts",\n    '  runtime.turtleLockedUntilRoundByPiece[piece.id] = engine.round + 2;\\n',\n    '  runtime.turtleLockedUntilRoundByPiece[piece.id] = engine.round + 3;\\n',\n)'''
+if old_turtle not in source:
+    raise SystemExit("Could not replace v3 turtle lock patch")
+source = source.replace(old_turtle, new_turtle, 1)
+
 exec(compile(source, str(source_path), "exec"), {"__name__": "__main__", "__file__": str(source_path)})
