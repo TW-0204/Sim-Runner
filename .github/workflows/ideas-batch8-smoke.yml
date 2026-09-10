@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - 'scripts/apply-ideas-batch8.py'
+      - 'scripts/apply-ideas-batch8-fix.py'
       - 'scripts/ideas-batch8-probe.ts'
+      - 'scripts/ideas-batch8-regression-probe.ts'
       - 'scripts/ideas-batch8-diagnose.ts'
       - '.github/workflows/ideas-batch8-smoke.yml'
   workflow_dispatch:
@@ -45,8 +47,12 @@ jobs:
         run: python scripts/apply-ideas-batch7.py
       - name: Apply ideas batch 8
         run: python scripts/apply-ideas-batch8.py
+      - name: Apply A13 G13 regression fix
+        run: python scripts/apply-ideas-batch8-fix.py
       - name: Run A01 mechanic probes
         run: node --import ./scripts/register-ts-hooks.mjs scripts/ideas-batch8-probe.ts
+      - name: Run A13 G13 regression probe
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/ideas-batch8-regression-probe.ts
       - name: Run batch 8 smoke scan
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 150 --min-samples 3 --output-dir balance-results/ideas-batch8-smoke --fail-on-incomplete
       - name: Diagnose incomplete A01 games
