@@ -65,7 +65,7 @@ export const AUGMENTS: AugmentDefinition[] = [
   { id: "P13", name: "성역", tier: "prism", conflicts: ["P03"], description: "갈림길에 도착한 자신의 말은 떠날 때까지 잡히지 않으며 상대는 그 갈림길을 통과할 수 없습니다." },
   { id: "P14", name: "독주", tier: "prism", timing: "first", special: true, description: "대표 말 하나만 사용할 수 있으며 그 말로 말판을 두 바퀴 완주하면 승리합니다." },
   { id: "P15", name: "일심동체 2", tier: "prism", family: "ONE_BODY", requires: "G08", description: "업힌 말 수에 따라 전진 이동량이 2개 +1, 3개 +2, 4개 +3칸 증가합니다." },
-  { id: "P16", name: "추노", tier: "prism", timing: "first", special: true, conflicts: ["G15"], description: "기본 승리 조건 대신 상대 말 잡기를 2인 6회, 3인 7회, 4인 8회 달성하면 즉시 승리합니다." },
+  { id: "P16", name: "추노", tier: "prism", timing: "first", special: true, conflicts: ["G15"], description: "기본 승리 조건 대신 상대 말 잡기를 2인 7회, 3인 16회, 4인 22회 달성하면 즉시 승리합니다." },
   { id: "P17", name: "독불장군", tier: "prism", description: "자신의 말도 잡을 수 있으며 아군을 잡으면 추가 던지기 2회를 얻습니다." },
   { id: "P18", name: "무임승차", tier: "prism", description: "자신의 이동 경로에서 지나친 아군 한 묶음을 도착 칸으로 불러와 업을 수 있습니다." },
   { id: "P19", name: "신의 손", tier: "prism", timing: "not-last", conflicts: fixedRollConflicts.filter((id) => id !== "P19"), description: "획득 즉시 1회 충전되며 이후 기본 던지기 3회마다 다음 기본 결과를 원하는 도·개·걸·윷·모로 바꿀 수 있습니다." },

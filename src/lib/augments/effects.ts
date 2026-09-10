@@ -409,7 +409,10 @@ export function replacesNormalWinCondition(ownedIds: string[]) {
 }
 
 export function huntCaptureTarget(playerCount: number) {
-  return 4 + playerCount;
+  if (playerCount === 2) return 7;
+  if (playerCount === 3) return 16;
+  if (playerCount === 4) return 22;
+  return 22;
 }
 
 export function specialWinForPlayer(engine: GameEngineState, userId: string, ownedIds: string[]): SpecialWinResult | null {
