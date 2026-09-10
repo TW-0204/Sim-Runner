@@ -1,9 +1,6 @@
 name: Balance Rework V3 Independent 90K
 
 on:
-  push:
-    paths:
-      - '.github/workflows/balance-rework-v3-90k.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,7 +12,7 @@ jobs:
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      max-parallel: 9
+      max-parallel: 15
       matrix:
         include:
           - player_count: 2
@@ -23,28 +20,46 @@ jobs:
             seed_start: 800000
           - player_count: 2
             batch_id: 2
-            seed_start: 810000
+            seed_start: 806000
           - player_count: 2
             batch_id: 3
-            seed_start: 820000
+            seed_start: 812000
+          - player_count: 2
+            batch_id: 4
+            seed_start: 818000
+          - player_count: 2
+            batch_id: 5
+            seed_start: 824000
           - player_count: 3
             batch_id: 1
             seed_start: 900000
           - player_count: 3
             batch_id: 2
-            seed_start: 910000
+            seed_start: 906000
           - player_count: 3
             batch_id: 3
-            seed_start: 920000
+            seed_start: 912000
+          - player_count: 3
+            batch_id: 4
+            seed_start: 918000
+          - player_count: 3
+            batch_id: 5
+            seed_start: 924000
           - player_count: 4
             batch_id: 1
             seed_start: 1000000
           - player_count: 4
             batch_id: 2
-            seed_start: 1010000
+            seed_start: 1006000
           - player_count: 4
             batch_id: 3
-            seed_start: 1020000
+            seed_start: 1012000
+          - player_count: 4
+            batch_id: 4
+            seed_start: 1018000
+          - player_count: 4
+            batch_id: 5
+            seed_start: 1024000
 
     steps:
       - name: Checkout
@@ -99,14 +114,14 @@ jobs:
       - name: Verify v3 mechanics
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
 
-      - name: Run independent 10K batch
+      - name: Run independent 6K batch
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
           --ruleset two-aug-start-r4-special-slots-v2
           --player-count ${{ matrix.player_count }}
           --batch-id ${{ matrix.batch_id }}
           --seed-start ${{ matrix.seed_start }}
-          --games 10000
+          --games 6000
           --output-dir independent-results
           --fail-on-incomplete
 
@@ -181,12 +196,13 @@ jobs:
       - name: Apply plague no-move regression fix
         run: python scripts/apply-balance-rework-v3-stall-fix.py
 
-      - name: Merge and analyze 9 independent batches
+      - name: Merge and analyze 15 independent batches
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
           --input-dir independent-results
           --output-dir independent-merged
           --min-samples 200
+          --expected-batches 5
       - name: Upload merged report
         uses: actions/upload-artifact@v4
         with:
