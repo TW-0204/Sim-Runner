@@ -54,7 +54,8 @@ jobs:
       - name: Apply pretest rough tuning
         run: python scripts/apply-pretest-rough-tuning.py
       - name: Verify A10 tier
-        run: node --import ./scripts/register-ts-hooks.mjs -e "import('./src/lib/augments/catalog.ts').then(({AUGMENT_BY_ID})=>{if(AUGMENT_BY_ID.get('A10')?.tier!=='prism')process.exit(1); console.log('[pretest-probe] PASS: A10 is Prism')})"
+        run: |
+          node --import ./scripts/register-ts-hooks.mjs -e "import('./src/lib/augments/catalog.ts').then(({AUGMENT_BY_ID})=>{if(AUGMENT_BY_ID.get('A10')?.tier!=='prism')process.exit(1); console.log('[pretest-probe] PASS - A10 is Prism')})"
       - name: Run pretest smoke scan
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 150 --min-samples 3 --output-dir balance-results/pretest-rough-tuning-smoke --fail-on-incomplete
       - name: Upload smoke results
