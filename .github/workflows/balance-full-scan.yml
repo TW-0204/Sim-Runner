@@ -1,0 +1,35 @@
+name: Balance Full Scan
+
+on:
+  push:
+    paths:
+      - '.github/workflows/balance-full-scan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Run 30K balance scan
+        run: npm run balance:scan -- --ruleset two-aug-start-r4-special-slots-v2 --games 10000 --min-samples 200 --fail-on-incomplete
+
+      - name: Upload balance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: balance-full-scan-results
+          path: balance-results/
+          if-no-files-found: warn
+          retention-days: 7
