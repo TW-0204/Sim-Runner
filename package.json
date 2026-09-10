@@ -8,6 +8,7 @@
   },
   "scripts": {
     "balance:scan": "node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts",
-    "balance:precision-special": "node --import ./scripts/register-ts-hooks.mjs scripts/precision-special-run.ts"
+    "balance:precision-special": "node --import ./scripts/register-ts-hooks.mjs scripts/precision-special-run.ts",
+    "balance:local": "node scripts/balance-local-runner.mjs"
   }
 }
