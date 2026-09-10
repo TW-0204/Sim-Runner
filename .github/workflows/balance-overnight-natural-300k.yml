@@ -1,0 +1,104 @@
+name: Balance Overnight Natural 300K
+
+on:
+  push:
+    branches:
+      - experiment/s16
+    paths:
+      - '.github/workflows/balance-overnight-natural-300k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch:
+    name: natural300k (${{ matrix.player_count }}p #${{ matrix.batch_id }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        include:
+          - { player_count: 2, batch_id: 1, seed_start: 2000000 }
+          - { player_count: 2, batch_id: 2, seed_start: 2020000 }
+          - { player_count: 2, batch_id: 3, seed_start: 2040000 }
+          - { player_count: 2, batch_id: 4, seed_start: 2060000 }
+          - { player_count: 2, batch_id: 5, seed_start: 2080000 }
+          - { player_count: 3, batch_id: 1, seed_start: 3000000 }
+          - { player_count: 3, batch_id: 2, seed_start: 3020000 }
+          - { player_count: 3, batch_id: 3, seed_start: 3040000 }
+          - { player_count: 3, batch_id: 4, seed_start: 3060000 }
+          - { player_count: 3, batch_id: 5, seed_start: 3080000 }
+          - { player_count: 4, batch_id: 1, seed_start: 4000000 }
+          - { player_count: 4, batch_id: 2, seed_start: 4020000 }
+          - { player_count: 4, batch_id: 3, seed_start: 4040000 }
+          - { player_count: 4, batch_id: 4, seed_start: 4060000 }
+          - { player_count: 4, batch_id: 5, seed_start: 4080000 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Verify v3 mechanics
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
+      - name: Run natural 20K batch
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 20000
+          --max-rounds 30
+          --output-dir natural-300k-results
+          --fail-on-incomplete
+      - name: Upload natural batch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: natural-300k-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: natural-300k-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  merge:
+    name: merge natural 300K
+    needs: batch
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natural-300k-*
+          path: natural-300k-results
+          merge-multiple: true
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Merge natural 300K scan
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
+          --input-dir natural-300k-results
+          --output-dir natural-300k-merged
+          --min-samples 500
+          --expected-batches 5
+      - name: Upload merged report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-natural-300k-merged
+          path: natural-300k-merged/
+          if-no-files-found: error
+          retention-days: 14
