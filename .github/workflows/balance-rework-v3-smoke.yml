@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/apply-balance-rework-v3.py'
+      - 'scripts/run-balance-rework-v3.py'
       - 'scripts/balance-rework-v3-probe.ts'
       - '.github/workflows/balance-rework-v3-smoke.yml'
   workflow_dispatch:
@@ -57,7 +58,7 @@ jobs:
       - name: Apply rough balance v2
         run: python scripts/apply-augment-rough-balance-v2.py
       - name: Apply balance rework v3
-        run: python scripts/apply-balance-rework-v3.py
+        run: python scripts/run-balance-rework-v3.py
       - name: Run mechanics probe
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
       - name: Run 2P smoke
