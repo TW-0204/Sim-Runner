@@ -1,0 +1,243 @@
+name: Balance Overnight Full Audit
+
+on:
+  push:
+    branches:
+      - experiment/s16
+    paths:
+      - '.github/workflows/balance-overnight-full-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  natural:
+    name: natural (${{ matrix.player_count }}p #${{ matrix.batch_id }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        include:
+          - { player_count: 2, batch_id: 1, seed_start: 800000 }
+          - { player_count: 2, batch_id: 2, seed_start: 806000 }
+          - { player_count: 2, batch_id: 3, seed_start: 812000 }
+          - { player_count: 2, batch_id: 4, seed_start: 818000 }
+          - { player_count: 2, batch_id: 5, seed_start: 824000 }
+          - { player_count: 3, batch_id: 1, seed_start: 900000 }
+          - { player_count: 3, batch_id: 2, seed_start: 906000 }
+          - { player_count: 3, batch_id: 3, seed_start: 912000 }
+          - { player_count: 3, batch_id: 4, seed_start: 918000 }
+          - { player_count: 3, batch_id: 5, seed_start: 924000 }
+          - { player_count: 4, batch_id: 1, seed_start: 1000000 }
+          - { player_count: 4, batch_id: 2, seed_start: 1006000 }
+          - { player_count: 4, batch_id: 3, seed_start: 1012000 }
+          - { player_count: 4, batch_id: 4, seed_start: 1018000 }
+          - { player_count: 4, batch_id: 5, seed_start: 1024000 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Verify v3 mechanics
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
+      - name: Run natural 6K batch
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 6000
+          --max-rounds 30
+          --output-dir natural-results
+          --fail-on-incomplete
+      - name: Upload natural batch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-natural-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: natural-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  natural_merge:
+    name: merge natural 90K
+    needs: natural
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: overnight-natural-*
+          path: natural-results
+          merge-multiple: true
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Merge natural scan
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
+          --input-dir natural-results
+          --output-dir natural-merged
+          --min-samples 200
+          --expected-batches 5
+      - name: Upload natural merged report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-natural-90k-merged
+          path: natural-merged/
+          if-no-files-found: error
+          retention-days: 14
+
+  precision_setup:
+    name: build active augment matrix
+    runs-on: ubuntu-latest
+    outputs:
+      ids: ${{ steps.catalog.outputs.ids }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - id: catalog
+        name: Export active augment IDs
+        run: echo "ids=$(node --import ./scripts/register-ts-hooks.mjs scripts/list-active-augment-ids.ts)" >> "$GITHUB_OUTPUT"
+
+  precision:
+    name: precision ${{ matrix.augment }}
+    needs: precision_setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        augment: ${{ fromJSON(needs.precision_setup.outputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Run all-context forced precision
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/precision-all-augment-run.ts
+          --augment ${{ matrix.augment }}
+          --games 500
+          --max-rounds 30
+          --output-dir precision-results
+      - name: Upload precision result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-precision-${{ matrix.augment }}
+          path: precision-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  precision_merge:
+    name: merge all augment precision
+    needs: precision
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: overnight-precision-*
+          path: precision-results
+          merge-multiple: true
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Merge forced precision
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/precision-all-augment-merge.ts
+          --input-dir precision-results
+          --output-dir precision-merged
+      - name: Upload precision merged report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-precision-all-merged
+          path: precision-merged/
+          if-no-files-found: error
+          retention-days: 14
+
+  full_audit:
+    name: build full audit report
+    needs: [natural_merge, precision_merge]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: overnight-natural-90k-merged
+          path: audit-input/natural
+      - uses: actions/download-artifact@v4
+        with:
+          name: overnight-precision-all-merged
+          path: audit-input/precision
+      - name: Wait for old-seed incomplete diagnostics
+        shell: bash
+        run: |
+          for attempt in $(seq 1 120); do
+            status=$(gh api repos/TW-0204/Sim-Runner/actions/runs/34507693400 --jq '.status' 2>/dev/null || echo unknown)
+            echo "diagnostic run status: $status"
+            if [ "$status" = "completed" ]; then
+              break
+            fi
+            sleep 30
+          done
+          mkdir -p audit-input/diagnostics
+          gh run download 34507693400 -n balance-incomplete-diagnostics-90k -D audit-input/diagnostics || true
+      - name: Apply current v3 rules
+        run: bash scripts/apply-v3-stack.sh
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Build comprehensive report
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-full-audit-merge.ts
+          --natural audit-input/natural/independent-90k-report.json
+          --precision audit-input/precision/precision-all-report.json
+          --diagnostics audit-input/diagnostics/incomplete-diagnostics.json
+          --output-dir full-audit-report
+      - name: Upload full audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-full-balance-audit
+          path: full-audit-report/
+          if-no-files-found: error
+          retention-days: 14
