@@ -5,6 +5,7 @@ on:
     paths:
       - 'scripts/apply-ideas-batch8.py'
       - 'scripts/ideas-batch8-probe.ts'
+      - 'scripts/ideas-batch8-diagnose.ts'
       - '.github/workflows/ideas-batch8-smoke.yml'
   workflow_dispatch:
 
@@ -48,6 +49,9 @@ jobs:
         run: node --import ./scripts/register-ts-hooks.mjs scripts/ideas-batch8-probe.ts
       - name: Run batch 8 smoke scan
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 150 --min-samples 3 --output-dir balance-results/ideas-batch8-smoke --fail-on-incomplete
+      - name: Diagnose incomplete A01 games
+        if: failure()
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/ideas-batch8-diagnose.ts
       - name: Upload smoke results
         if: always()
         uses: actions/upload-artifact@v4
