@@ -1,0 +1,12 @@
+{
+  "name": "augment-yut-sim-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "balance:scan": "node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts"
+  }
+}
