@@ -1,9 +1,6 @@
 name: Independent 90K Balance Scout
 
 on:
-  push:
-    paths:
-      - '.github/workflows/balance-independent-90k.yml'
   workflow_dispatch:
 
 permissions:
