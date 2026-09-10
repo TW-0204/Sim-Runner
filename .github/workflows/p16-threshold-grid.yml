@@ -1,0 +1,43 @@
+name: P16 Threshold Grid
+
+on:
+  push:
+    paths:
+      - '.github/workflows/p16-threshold-grid.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  threshold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        targets:
+          - '7,10,13'
+          - '7,13,17'
+          - '7,16,21'
+          - '8,19,25'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Run P16 threshold precision
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/p16-threshold-run.ts --targets "${{ matrix.targets }}" --games 1000
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p16-${{ strategy.job-index }}
+          path: p16-threshold-results/
+          if-no-files-found: warn
+          retention-days: 7
