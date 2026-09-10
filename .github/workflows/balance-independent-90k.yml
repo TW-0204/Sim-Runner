@@ -1,0 +1,111 @@
+name: Independent 90K Balance Scout
+
+on:
+  push:
+    paths:
+      - '.github/workflows/balance-independent-90k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        include:
+          - player_count: 2
+            batch_id: 1
+            seed_start: 0
+          - player_count: 2
+            batch_id: 2
+            seed_start: 10000
+          - player_count: 2
+            batch_id: 3
+            seed_start: 20000
+          - player_count: 3
+            batch_id: 1
+            seed_start: 100000
+          - player_count: 3
+            batch_id: 2
+            seed_start: 110000
+          - player_count: 3
+            batch_id: 3
+            seed_start: 120000
+          - player_count: 4
+            batch_id: 1
+            seed_start: 200000
+          - player_count: 4
+            batch_id: 2
+            seed_start: 210000
+          - player_count: 4
+            batch_id: 3
+            seed_start: 220000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Run independent 10K batch
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 10000
+          --output-dir independent-results
+          --fail-on-incomplete
+
+      - name: Upload batch summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scout-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: independent-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  merge:
+    needs: batch
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Download all batch summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scout-*
+          path: independent-results
+          merge-multiple: true
+
+      - name: Merge and analyze 9 independent batches
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
+          --input-dir independent-results
+          --output-dir independent-merged
+          --min-samples 200
+
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-90k-merged-report
+          path: independent-merged/
+          if-no-files-found: error
+          retention-days: 7
