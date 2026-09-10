@@ -1,0 +1,30 @@
+name: S16 Nak Precision 1K
+
+on:
+  push:
+    paths:
+      - '.github/workflows/s16-precision-1k.yml'
+      - 'scripts/s16-precision-run.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Run S16 forced-owner precision
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts --games 1000 --output-dir precision-results/s16
+      - name: Upload S16 precision results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s16-precision-1k
+          path: precision-results/s16
+          if-no-files-found: error
