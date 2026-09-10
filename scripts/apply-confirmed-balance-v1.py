@@ -8,6 +8,7 @@ def replace_exact(path: str, old: str, new: str):
         raise SystemExit(f"Expected block not found in {path}")
     p.write_text(text.replace(old, new), encoding="utf-8")
 
+
 # G01: Gold -> Prism, effect unchanged.
 replace_exact(
     "src/lib/augments/catalog.ts",
@@ -22,10 +23,43 @@ replace_exact(
     '{ id: "S04", name: "돌파", tier: "silver", description: "자신의 말이 누적 4회 잡히면 이후 처음 2번의 잡기를 무효화합니다." },',
 )
 
+# S02: one extra roll per two successful stack events, cumulative across the game.
+replace_exact(
+    "src/lib/augments/catalog.ts",
+    '{ id: "S02", name: "어부바", tier: "silver", description: "자신의 말을 새로 업을 때마다 추가 던지기 1회를 얻습니다." },',
+    '{ id: "S02", name: "어부바", tier: "silver", description: "자신의 말을 새로 업한 횟수가 누적 2회가 될 때마다 추가 던지기 1회를 얻습니다." },',
+)
+
+# G05: controlled duration 5 -> 4 basic rolls.
+replace_exact(
+    "src/lib/augments/catalog.ts",
+    '{ id: "G05", name: "모 아니면 도", tier: "gold", conflicts: fixedRollConflicts.filter((id) => id !== "G05"), description: "다음 5회의 기본 던지기는 각각 50% 확률로 모 또는 도가 나옵니다." },',
+    '{ id: "G05", name: "모 아니면 도", tier: "gold", conflicts: fixedRollConflicts.filter((id) => id !== "G05"), description: "다음 4회의 기본 던지기는 각각 50% 확률로 모 또는 도가 나옵니다." },',
+)
+
+# G15: Gold -> Silver, effect unchanged.
+replace_exact(
+    "src/lib/augments/catalog.ts",
+    '{ id: "G15", name: "육상선수", tier: "gold", conflicts: ["P16"], description: "상대를 잡을 수 없는 대신, 한 턴의 이동을 잡기와 업기 없이 끝내면 추가 던지기 1회를 얻습니다." },',
+    '{ id: "G15", name: "육상선수", tier: "silver", conflicts: ["P16"], description: "상대를 잡을 수 없는 대신, 한 턴의 이동을 잡기와 업기 없이 끝내면 추가 던지기 1회를 얻습니다." },',
+)
+
 replace_exact(
     "src/lib/game/types.ts",
     '  timesCaptured?: number;\n',
-    '  timesCaptured?: number;\n  breakthroughBlocksRemaining?: number;\n',
+    '  timesCaptured?: number;\n  breakthroughBlocksRemaining?: number;\n  piggybackStackCount?: number;\n',
+)
+
+replace_exact(
+    "src/lib/augments/effects.ts",
+    '''  const runtime = runtimeForPlayer(engine, userId);\n  const used = runtime.controlledBasicRollsUsed ?? 0;\n  if (used >= 5) return face;\n  runtime.controlledBasicRollsUsed = used + 1;\n''',
+    '''  const runtime = runtimeForPlayer(engine, userId);\n  const used = runtime.controlledBasicRollsUsed ?? 0;\n  const controlledRollLimit = has(ownedIds, "G05") ? 4 : 5;\n  if (used >= controlledRollLimit) return face;\n  runtime.controlledBasicRollsUsed = used + 1;\n''',
+)
+
+replace_exact(
+    "src/lib/augments/effects.ts",
+    '''export function stackAugmentExtraRolls(stack: boolean, ownedIds: string[]) {\n  return stack && has(ownedIds, "S02") ? 1 : 0;\n}\n''',
+    '''export function stackAugmentExtraRolls(\n  engine: GameEngineState,\n  userId: string,\n  stack: boolean,\n  ownedIds: string[],\n) {\n  if (!stack || !has(ownedIds, "S02")) return 0;\n  const runtime = runtimeForPlayer(engine, userId);\n  runtime.piggybackStackCount = (runtime.piggybackStackCount ?? 0) + 1;\n  return runtime.piggybackStackCount % 2 === 0 ? 1 : 0;\n}\n''',
 )
 
 replace_exact(
@@ -45,4 +79,20 @@ replace_exact(
     '    if (isSanctuaryGroup(engine, victim.ownerUserId, victim.groupId, node)) continue;\n    if (isCaptureImmune(engine, victim.ownerUserId, victimOwned)) continue;\n    if (consumeBreakthroughCaptureBlock(engine, victim.ownerUserId, victimOwned)) continue;\n\n    captureCount += 1;\n',
 )
 
-print("Applied confirmed balance v1: S04 two capture blocks, G01 prism tier.")
+replace_exact(
+    "src/lib/game/engine.ts",
+    '    pending.augmentExtraRolls += stackAugmentExtraRolls(true, ownedIds);\n',
+    '    pending.augmentExtraRolls += stackAugmentExtraRolls(engine, player.userId, true, ownedIds);\n',
+)
+replace_exact(
+    "src/lib/game/engine.ts",
+    '  const augmentExtraRolls = (pending.augmentExtraRolls ?? 0) + stackAugmentExtraRolls(stack, ownedIds);\n',
+    '  const augmentExtraRolls = (pending.augmentExtraRolls ?? 0) + stackAugmentExtraRolls(engine, player.userId, stack, ownedIds);\n',
+)
+replace_exact(
+    "src/lib/game/engine.ts",
+    '  const augmentExtraRolls = stackAugmentExtraRolls(true, ownedIds);\n',
+    '  const augmentExtraRolls = stackAugmentExtraRolls(engine, player.userId, true, ownedIds);\n',
+)
+
+print("Applied confirmed balance v2: S04 two capture blocks, G01 prism, S02 every two stacks, G15 silver, G05 four rolls.")
