@@ -6,6 +6,7 @@ on:
       - 'scripts/apply-confirmed-balance-v1.py'
       - 'scripts/apply-g15-g01-v5.py'
       - 'scripts/apply-g01-g15-v6.py'
+      - 'scripts/apply-balance-v7.py'
       - '.github/workflows/confirmed-balance-v1-quick.yml'
   workflow_dispatch:
 
@@ -27,6 +28,8 @@ jobs:
         run: python scripts/apply-g15-g01-v5.py
       - name: Apply G01 and G15 v6 tuning
         run: python scripts/apply-g01-g15-v6.py
+      - name: Apply balance v7 tuning
+        run: python scripts/apply-balance-v7.py
       - name: Run quick balance scan
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 3000 --min-samples 50 --output-dir balance-results/confirmed-v1-quick --fail-on-incomplete
       - name: Upload quick scan results
