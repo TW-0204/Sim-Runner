@@ -7,6 +7,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "balance:scan": "node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts"
+    "balance:scan": "node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts",
+    "balance:precision-special": "node --import ./scripts/register-ts-hooks.mjs scripts/precision-special-run.ts"
   }
 }
