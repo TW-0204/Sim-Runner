@@ -37,11 +37,12 @@ replace_exact(
     '{ id: "G05", name: "모 아니면 도", tier: "gold", conflicts: fixedRollConflicts.filter((id) => id !== "G05"), description: "획득 후 3라운드 동안 기본 던지기는 각각 50% 확률로 모 또는 도가 나옵니다." },',
 )
 
-# G15 remains Silver for now while its balance is reviewed; effect unchanged.
+# G15 is temporarily removed from the offer pool while the design is reworked.
+# Keep the dormant implementation files so a later redesign can reuse or compare them.
 replace_exact(
     "src/lib/augments/catalog.ts",
-    '{ id: "G15", name: "육상선수", tier: "gold", conflicts: ["P16"], description: "상대를 잡을 수 없는 대신, 한 턴의 이동을 잡기와 업기 없이 끝내면 추가 던지기 1회를 얻습니다." },',
-    '{ id: "G15", name: "육상선수", tier: "silver", conflicts: ["P16"], description: "상대를 잡을 수 없는 대신, 한 턴의 이동을 잡기와 업기 없이 끝내면 추가 던지기 1회를 얻습니다." },',
+    '  { id: "G15", name: "육상선수", tier: "gold", conflicts: ["P16"], description: "상대를 잡을 수 없는 대신, 한 턴의 이동을 잡기와 업기 없이 끝내면 추가 던지기 1회를 얻습니다." },\n',
+    '',
 )
 
 replace_exact(
@@ -75,11 +76,6 @@ replace_exact(
 )
 replace_exact(
     "src/lib/game/engine.ts",
-    '''  const mover = currentPlayer(engine);\n  let captureCount = 0;\n  let captureExtraRollCount = 0;\n  let attackerReturned = false;\n''',
-    '''  const mover = currentPlayer(engine);\n  let captureCount = 0;\n  let captureExtraRollCount = 0;\n  let attackerReturned = false;\n\n  // G15 explicitly forbids capturing opponents. Do not emulate this through S04 immunity,\n  // because S04 is now a consumable two-block defense rather than permanent immunity.\n  if ((ownedByUser[mover.userId] ?? []).includes("G15")) {\n    return { captureCount, captureExtraRollCount, attackerReturned };\n  }\n''',
-)
-replace_exact(
-    "src/lib/game/engine.ts",
     '    if (isSanctuaryGroup(engine, victim.ownerUserId, victim.groupId, node)) continue;\n    if (isCaptureImmune(engine, victim.ownerUserId, victimOwned)) continue;\n\n    captureCount += 1;\n',
     '    if (isSanctuaryGroup(engine, victim.ownerUserId, victim.groupId, node)) continue;\n    if (isCaptureImmune(engine, victim.ownerUserId, victimOwned)) continue;\n    if (consumeBreakthroughCaptureBlock(engine, victim.ownerUserId, victimOwned)) continue;\n\n    captureCount += 1;\n',
 )
@@ -100,4 +96,4 @@ replace_exact(
     '  const augmentExtraRolls = stackAugmentExtraRolls(engine, player.userId, true, ownedIds);\n',
 )
 
-print("Applied confirmed balance v3: S04 five captures then two blocks, G01 prism, S02 every three stacks, G15 silver with explicit no-capture rule, G05 three rounds.")
+print("Applied confirmed balance v4: S04 five captures then two blocks, G01 prism, S02 every three stacks, G05 three rounds, G15 removed from pool.")
