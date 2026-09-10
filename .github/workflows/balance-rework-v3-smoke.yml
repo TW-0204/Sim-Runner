@@ -62,8 +62,8 @@ jobs:
       - name: Run mechanics probe
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
       - name: Run 2P smoke
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --players 2 --games 100 --seed-start 700000 --output-dir balance-results/v3-2p
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --player-count 2 --games 100 --seed-start 700000 --output-dir balance-results/v3-2p
       - name: Run 3P smoke
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --players 3 --games 100 --seed-start 710000 --output-dir balance-results/v3-3p
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --player-count 3 --games 100 --seed-start 710000 --output-dir balance-results/v3-3p
       - name: Run 4P smoke
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --players 4 --games 100 --seed-start 720000 --output-dir balance-results/v3-4p
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts --ruleset two-aug-start-r4-special-slots-v2 --player-count 4 --games 100 --seed-start 720000 --output-dir balance-results/v3-4p
