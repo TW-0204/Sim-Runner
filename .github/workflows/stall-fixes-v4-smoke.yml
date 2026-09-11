@@ -1,0 +1,52 @@
+name: Stall Fix V4 Smoke
+
+on:
+  push:
+    branches: [experiment/s16]
+    paths:
+      - '.github/workflows/stall-fixes-v4-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - name: Apply current v3 plus stall fixes
+        run: bash scripts/apply-v3-stack.sh
+      - name: Verify v3 mechanics
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
+      - name: Verify stall fixes v4
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v4-probe.ts
+
+  targeted-scan:
+    needs: probe
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - player_count: 2
+            seed_start: 1300000
+          - player_count: 3
+            seed_start: 1400000
+          - player_count: 4
+            seed_start: 1500000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - name: Apply current v3 plus stall fixes
+        run: bash scripts/apply-v3-stack.sh
+      - name: Scan 3K games for targeted stall regressions
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v4-scan.ts
+          --player-count ${{ matrix.player_count }}
+          --games 3000
+          --seed-start ${{ matrix.seed_start }}
