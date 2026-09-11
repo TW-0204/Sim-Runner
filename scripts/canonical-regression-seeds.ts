@@ -57,6 +57,9 @@ const forcedCases: ForcedCase[] = [
   { source: "ownership invariant", augmentId: "P14", seed: "6226189", playerCount: 2, acquisitionIndex: 1, label: "A10 transferred group-root reparent" },
   { source: "runtime reference", augmentId: "P19", seed: "6872545", playerCount: 4, acquisitionIndex: 1, label: "G16 reference repair after piece ownership change 1" },
   { source: "runtime reference", augmentId: "P19", seed: "6872918", playerCount: 4, acquisitionIndex: 1, label: "G16 reference repair after piece ownership change 2" },
+  { source: "runtime reference", augmentId: "P04", seed: "6518821", playerCount: 4, acquisitionIndex: 1, label: "G16 reference repair under P04 context" },
+  { source: "runtime reference", augmentId: "P10", seed: "6716316", playerCount: 3, acquisitionIndex: 1, label: "G16 reference repair under P10 3P context" },
+  { source: "runtime reference", augmentId: "P10", seed: "6815860", playerCount: 4, acquisitionIndex: 1, label: "G16 reference repair under P10 4P context" },
 ];
 
 const ruleset = getBalanceRuleset("two-aug-start-r4-special-slots-v2");
