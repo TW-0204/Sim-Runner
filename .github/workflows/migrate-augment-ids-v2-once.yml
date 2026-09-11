@@ -1,4 +1,4 @@
-# One-shot validated migration. Removed automatically after a successful run.
+# One-shot validated migration. Workflow files are updated separately after the code migration lands.
 name: Migrate Augment IDs V2 Once
 
 on:
@@ -63,9 +63,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/migrate-augment-ids-v2-once.yml
+          # GitHub Actions tokens cannot update workflow files. Restore them here;
+          # the connected GitHub client applies those canonical-ID edits separately.
+          git checkout -- .github/workflows
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add src scripts docs AGENTS.md README.md archive/migrations
           git commit -m 'refactor: migrate augments to permanent AUG ids'
           git push origin HEAD:refactor/augment-id-v2
