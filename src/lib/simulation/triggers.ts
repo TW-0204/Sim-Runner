@@ -7,6 +7,7 @@ export type SimulationActionKind =
   | "choose_roll"
   | "reroll_do"
   | "move"
+  | "wormhole"
   | "stack"
   | "relocate"
   | "grand_unity"
@@ -15,6 +16,8 @@ export type SimulationActionKind =
   | "allocate_number_pool"
   | "capture_choice"
   | "ally_capture"
+  | "margin_exit"
+  | "margin_return"
   | "split";
 
 export type AugmentTriggerEvent = {
@@ -369,8 +372,10 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
 
   if (
     ownedIds.includes("G15")
-    && !runtime(input.before, input.actorUserId)?.athleteRewarded
-    && runtime(input.after, input.actorUserId)?.athleteRewarded
+    && positive
+    && !suppressBonuses
+    && runtime(input.before, input.actorUserId)?.athleteAcceleratingGroupId === move.groupId
+    && (runtime(input.before, input.actorUserId)?.athleteConsecutiveMoves ?? 0) > 0
   ) {
     addMapEvent(events, input.actorUserId, "G15");
   }
@@ -383,7 +388,7 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
     if (victimOwned.includes("P07")) addMapEvent(events, group.userId, "P07");
   }
 
-  if (!ownedIds.includes("G15")) {
+  {
     const attemptNodes = new Set(captureAttemptNodes(input, move));
     for (const group of boardGroups(input.before)) {
       if (group.userId === input.actorUserId || !attemptNodes.has(group.node)) continue;
@@ -391,7 +396,7 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
       const victimOwned = input.ownedByUser[group.userId] ?? [];
       if (
         victimOwned.includes("S04")
-        && (runtime(input.before, group.userId)?.timesCaptured ?? 0) >= 4
+        && (runtime(input.before, group.userId)?.timesCaptured ?? 0) >= 5
       ) {
         addMapEvent(events, group.userId, "S04");
       }

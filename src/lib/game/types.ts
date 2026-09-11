@@ -1,6 +1,6 @@
 export type RollFace = "BACKDO" | "DO" | "GAE" | "GEOL" | "YUT" | "MO" | "MOVE1";
 export type RollSource = "BASIC" | "YUT_MO" | "CAPTURE" | "AUGMENT";
-export type PieceStatus = "WAITING" | "ON_BOARD" | "FINISHED";
+export type PieceStatus = "WAITING" | "ON_BOARD" | "WORMHOLE" | "MARGIN" | "FINISHED";
 export type TurnStage = "AWAITING_ROLL" | "ROLL_CHOICE" | "MOVING" | "SPLIT_CHOICE" | "CAPTURE_CHOICE" | "RELOCATION_CHOICE" | "STACK_CHOICE" | "FINISHED";
 export type GameWinCondition = "NORMAL" | "SOLO_RUN" | "FOUR_GUARDIANS" | "CENTER_STACK" | "HUNT" | "MOONWALK";
 
@@ -36,6 +36,7 @@ export type PieceState = {
   groupId: string;
   hasEntered: boolean;
   pathHistory: number[];
+  betrayalOriginalOwnerUserId?: string;
 };
 
 export type EnginePlayer = {
@@ -129,12 +130,43 @@ export type PlayerAugmentRuntime = {
   soloLaps?: number;
   enemyCaptureCount?: number;
   timesCaptured?: number;
+  breakthroughBlocksRemaining?: number;
+  piggybackStackCount?: number;
+  g05StartRound?: number;
+  g01ExtraTurnNumber?: number;
+  g01ExtraRollsGranted?: number;
+  athleteAcceleratingGroupId?: string;
+  athleteConsecutiveMoves?: number;
+  a04NextBasicBonusPending?: boolean;
+  a04UpgradeNextAugment?: boolean;
+  walkingTrailSegment?: number;
+  echoRouteCaptured?: boolean;
+  echoBranchChoices?: Record<string, number>;
+  echoSourcePieceId?: string;
+  echoFollowerPieceId?: string;
+  echoCompleted?: boolean;
+  echoFollowersRemaining?: number;
+  wormholeNextOpenRound?: number;
+  wormholeTransit?: Record<string, { returnRound: number; originNode: number; pieceIds: string[] }>;
+  turtleLockedUntilRoundByPiece?: Record<string, number>;
+  marginOriginByPiece?: Record<string, number>;
+  marginSentTurnNumber?: number;
+  plaguePieceIds?: Record<string, boolean>;
+  plagueTurnActive?: boolean;
+  gravityExplosionRound?: number;
+  gravityExplosionResolved?: boolean;
+  bombResolved?: boolean;
+  bombBonusRollsPending?: number;
+  gachaNextUseRound?: number;
   controlledBasicRollsUsed?: number;
   fixedOneGroups?: Record<string, boolean>;
   junctionBoostGroups?: Record<string, boolean>;
   sanctuaryGroups?: Record<string, number>;
+  sanctuaryPassBlocks?: Record<string, boolean>;
   alleyBlockades?: Record<string, number>;
   universeCenterGroups?: Record<string, boolean>;
+  universeCenterRewardLevel?: number;
+  universeFreezeTurnsRemaining?: number;
   counterRollPending?: boolean;
   revengeBasicPending?: boolean;
   doRerollsUsed?: number;
@@ -151,6 +183,8 @@ export type PlayerAugmentRuntime = {
   tomorrowSavedAtTurnNumber?: number;
   vacancyInitialized?: boolean;
   vacancySkipsRemaining?: number;
+  vacancyReturnBonusPending?: boolean;
+  vacancyReturnBonusGranted?: boolean;
 };
 
 export type GameEngineState = {

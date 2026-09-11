@@ -86,7 +86,7 @@ function isStructurallyImpossible(augment: AugmentDefinition, ownedIds: string[]
   return false;
 }
 
-function canOffer(augment: AugmentDefinition, phase: number, ownedIds: string[]) {
+export function canOffer(augment: AugmentDefinition, phase: number, ownedIds: string[]) {
   if (augment.timing === "first" && phase !== 1) return false;
   if (augment.timing === "last" && phase !== 3) return false;
   if (augment.timing === "not-last" && phase === 3) return false;
@@ -143,9 +143,11 @@ function buildSlotPhaseOffers(args: {
   seed: string;
   phase: number;
   tier: AugmentTier;
+  tierByUser?: Record<string, AugmentTier>;
   players: PlayerSeed[];
   ownedByUser?: Record<string, string[]>;
   excludedIds?: string[];
+  excludedIdsByUser?: Record<string, string[]>;
   specialChancePerDraw: number;
 }) {
   const reservedUnique = new Set<string>();
@@ -154,7 +156,12 @@ function buildSlotPhaseOffers(args: {
 
   const draw = (player: PlayerSeed, drawIndex: number, additionalExcluded: Set<string>) => {
     const ownedIds = args.ownedByUser?.[player.userId] ?? [];
-    const excluded = new Set([...(args.excludedIds ?? []), ...additionalExcluded]);
+    const playerTier = args.tierByUser?.[player.userId] ?? args.tier;
+    const excluded = new Set([
+      ...(args.excludedIds ?? []),
+      ...(args.excludedIdsByUser?.[player.userId] ?? []),
+      ...additionalExcluded,
+    ]);
     const available = (augment: AugmentDefinition) => (
       !excluded.has(augment.id)
       && canOffer(augment, args.phase, ownedIds)
@@ -162,7 +169,7 @@ function buildSlotPhaseOffers(args: {
     );
 
     const normalCandidates = AUGMENTS
-      .filter((augment) => !augment.special && augment.tier === args.tier)
+      .filter((augment) => !augment.special && augment.tier === playerTier)
       .filter(available);
     const specialCandidates = AUGMENTS
       .filter((augment) => augment.special)
@@ -178,7 +185,7 @@ function buildSlotPhaseOffers(args: {
       : deterministicCandidate(normalCandidates, `${key}:normal`);
 
     if (!selected) {
-      throw new Error(`Not enough ${args.tier} augments for player ${player.userId} in phase ${args.phase}.`);
+      throw new Error(`Not enough ${playerTier} augments for player ${player.userId} in phase ${args.phase}.`);
     }
     if (selected.uniquePerGame) reservedUnique.add(selected.id);
     return selected.id;
@@ -209,9 +216,11 @@ export function buildPhaseOffers(args: {
   seed: string;
   phase: number;
   tier: AugmentTier;
+  tierByUser?: Record<string, AugmentTier>;
   players: PlayerSeed[];
   ownedByUser?: Record<string, string[]>;
   excludedIds?: string[];
+  excludedIdsByUser?: Record<string, string[]>;
   excludeSpecial?: boolean;
   specialChancePerDraw?: number;
 }) {
@@ -220,9 +229,11 @@ export function buildPhaseOffers(args: {
       seed: args.seed,
       phase: args.phase,
       tier: args.tier,
+      tierByUser: args.tierByUser,
       players: args.players,
       ownedByUser: args.ownedByUser,
       excludedIds: args.excludedIds,
+      excludedIdsByUser: args.excludedIdsByUser,
       specialChancePerDraw: args.specialChancePerDraw,
     });
   }
@@ -233,9 +244,13 @@ export function buildPhaseOffers(args: {
 
   for (const player of sortedPlayers) {
     const ownedIds = args.ownedByUser?.[player.userId] ?? [];
-    const excludedIds = new Set(args.excludedIds ?? []);
+    const playerTier = args.tierByUser?.[player.userId] ?? args.tier;
+    const excludedIds = new Set([
+      ...(args.excludedIds ?? []),
+      ...(args.excludedIdsByUser?.[player.userId] ?? []),
+    ]);
     const candidates = AUGMENTS
-      .filter((augment) => augment.tier === args.tier)
+      .filter((augment) => augment.tier === playerTier)
       .filter((augment) => !args.excludeSpecial || !augment.special)
       .filter((augment) => !excludedIds.has(augment.id))
       .filter((augment) => canOffer(augment, args.phase, ownedIds))
@@ -258,7 +273,7 @@ export function buildPhaseOffers(args: {
     }
 
     if (offerIds.length < 6) {
-      throw new Error(`Not enough ${args.tier} augments for player ${player.userId} in phase ${args.phase}.`);
+      throw new Error(`Not enough ${playerTier} augments for player ${player.userId} in phase ${args.phase}.`);
     }
 
     result.push({ userId: player.userId, offerIds });

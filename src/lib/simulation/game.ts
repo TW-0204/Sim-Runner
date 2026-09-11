@@ -1,11 +1,15 @@
-import { AUGMENT_BY_ID } from "@/lib/augments/catalog";
+import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
 import {
   adjustedResultForGroup,
-  grantsFaceExtraRoll,
+  applyBetrayalTransfer,
+  armA04OnAcquisition,
+  canGrantFaceExtraRoll,
+  queueA04BonusForNextBasic,
   isGroupUsableWithAugments,
+  replacesNormalWinCondition,
   type PlayerAugmentSetups,
 } from "@/lib/augments/effects";
-import { buildPhaseOffers, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
+import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
 import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
 import {
   markAthleteDisqualified,
@@ -16,13 +20,29 @@ import {
 } from "@/lib/game/athlete";
 import { applyCaptureChoice, maybePauseCaptureChoices } from "@/lib/game/capture-choice";
 import {
+  applyBombExplosion,
+  applyGachaMachine,
   applyGrandUnity,
+  applyGreatUpheaval,
+  applyGravityExplosion,
+  applyMarginExit,
+  applyMarginReturn,
+  applyMoonwalkAcquisitionScatter,
   applyMove,
+  applyWormholeTurn,
+  applyTurtleAndHarePlacement,
+  armGachaMachineOnAcquisition,
+  armWormholeOnAcquisition,
   applyRelocationChoice,
   applyStackChoice,
   createInitialEngine,
   currentPlayer,
+  expireWormholeForCurrentRound,
   legalMoveTargetsWithAugments,
+  gachaMachineIsReady,
+  isForcedRelocationImmune,
+  resolveDueWormholeReturns,
+  wormholeIsOpen,
 } from "@/lib/game/engine";
 import {
   allocateNumberPool,
@@ -43,6 +63,7 @@ import {
 import { applySelfRelianceSplit, maybePauseSelfRelianceAfterMovement } from "@/lib/game/self-reliance";
 import { injectTomorrowResult, saveResultForTomorrow } from "@/lib/game/tomorrow";
 import type { EngineMoveTarget } from "@/lib/game/engine";
+import { discardUnusableResults } from "@/lib/game/engine";
 import type { GameEngineState, PieceState, RollToken } from "@/lib/game/types";
 import type { BalanceRuleset } from "./rulesets";
 import { createSimulationRandomStreams, type SimulationRandomStreams } from "./rng";
@@ -151,16 +172,125 @@ function upgradeOwnedList(existing: string[], selectedId: string) {
   return [...existing.filter((id) => AUGMENT_BY_ID.get(id)?.family !== selected.family), selectedId];
 }
 
-function setupPieceId(player: GameEngineState["players"][number]) {
-  const ranked = [...player.pieces].sort((left, right) => {
+function rankedSetupPiece(pieces: PieceState[]) {
+  return [...pieces].sort((left, right) => {
     const statusScore = (piece: PieceState) => piece.status === "FINISHED" ? 3 : piece.status === "ON_BOARD" ? 2 : piece.hasEntered ? 1 : 0;
     const statusDelta = statusScore(right) - statusScore(left);
     if (statusDelta !== 0) return statusDelta;
     const historyDelta = right.pathHistory.length - left.pathHistory.length;
     if (historyDelta !== 0) return historyDelta;
     return left.id.localeCompare(right.id);
-  });
-  return ranked[0]?.id ?? player.pieces[0]?.id;
+  })[0];
+}
+
+function setupPieceId(player: GameEngineState["players"][number], augmentId?: string) {
+  const candidates = augmentId === "P14"
+    ? player.pieces.filter((piece) => piece.betrayalOriginalOwnerUserId == null)
+    : player.pieces;
+  return rankedSetupPiece(candidates)?.id;
+}
+
+function playerHasWaitingPiece(context: SimulationContext, userId: string) {
+  return Boolean(context.engine.players.find((player) => player.userId === userId)?.pieces.some((piece) => piece.status === "WAITING"));
+}
+
+function repairTransferredSetup(context: SimulationContext, sourceUserId: string, transferredPieceId: string) {
+  const setups = context.setupsByUser[sourceUserId];
+  if (!setups) return;
+  const source = context.engine.players.find((player) => player.userId === sourceUserId);
+  for (const augmentId of ["G16", "P14"] as const) {
+    if (setups[augmentId]?.pieceId !== transferredPieceId) continue;
+
+    if (augmentId === "P14") {
+      const nativePieces = source?.pieces.filter((piece) => piece.betrayalOriginalOwnerUserId == null) ?? [];
+      const nonFinished = nativePieces.filter((piece) => piece.status !== "FINISHED");
+      const replacement = rankedSetupPiece(nonFinished.length > 0 ? nonFinished : nativePieces);
+      if (!replacement) {
+        delete setups[augmentId];
+        continue;
+      }
+      if (replacement.status === "FINISHED") {
+        replacement.status = "WAITING";
+        replacement.node = null;
+        replacement.groupId = replacement.id;
+      }
+      setups[augmentId] = { pieceId: replacement.id };
+      continue;
+    }
+
+    const replacementId = source?.pieces[0]?.id;
+    if (replacementId) setups[augmentId] = { pieceId: replacementId };
+    else delete setups[augmentId];
+  }
+}
+
+function maybeDeclareBetrayalSourceWinner(context: SimulationContext, userId: string) {
+  const ownedIds = context.ownedByUser[userId] ?? [];
+  if (ownedIds.includes("P02") || replacesNormalWinCondition(ownedIds)) return;
+  const player = context.engine.players.find((candidate) => candidate.userId === userId);
+  if (!player || !player.pieces.every((piece) => piece.status === "FINISHED")) return;
+
+  context.engine.winnerUserId = userId;
+  context.engine.winnerCondition = "NORMAL";
+  context.engine.stage = "FINISHED";
+  context.engine.pendingRolls = [];
+  context.engine.results = [];
+  context.engine.pendingRollChoice = null;
+  context.engine.pendingSplitChoice = null;
+  context.engine.pendingCaptureChoice = null;
+  context.engine.pendingRelocationChoice = null;
+  context.engine.pendingStackChoice = null;
+  context.engine.lastAction = `${player.displayName}: 배반 후 남은 현재 말이 모두 완주되어 승리!`;
+}
+
+function upgradedAugmentTier(tier: AugmentTier): AugmentTier {
+  if (tier === "silver") return "gold";
+  if (tier === "gold") return "prism";
+  return "prism";
+}
+
+function canReceiveA04(context: SimulationContext, eventIndex: number) {
+  const nextEvent = context.ruleset.augmentEvents[eventIndex + 1];
+  if (!nextEvent) return false;
+  const sequence = pickTierSequence(context.seed);
+  return sequence[nextEvent.logicalPhase - 1] !== "prism";
+}
+
+function immediateReplacementId(
+  context: SimulationContext,
+  userId: string,
+  phase: number,
+  eventIndex: number,
+  sourceId: "A05" | "A06",
+) {
+  const targetTier: AugmentTier = sourceId === "A05" ? "gold" : "prism";
+  const ownedIds = context.ownedByUser[userId] ?? [];
+  const alreadyClaimedUnique = new Set(
+    context.acquisitions
+      .map((item) => item.augmentId)
+      .filter((id) => AUGMENT_BY_ID.get(id)?.uniquePerGame),
+  );
+  const candidates = AUGMENTS
+    .filter((augment) => augment.tier === targetTier)
+    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")
+    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))
+    .filter((augment) => augment.id !== "A04" || canReceiveA04(context, eventIndex))
+    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))
+    .filter((augment) => canOffer(augment, phase, ownedIds))
+    .filter((augment) => !augment.uniquePerGame || !alreadyClaimedUnique.has(augment.id));
+  if (!candidates.length) {
+    throw new Error(`${sourceId} replacement pool has no eligible ${targetTier} augment.`);
+  }
+  return context.rng.augment.pick(candidates).id;
+}
+
+function ownedIdsForOffers(context: SimulationContext) {
+  return Object.fromEntries(context.engine.players.map((player) => {
+    const consumedReplacementCards = context.acquisitions
+      .filter((item) => item.userId === player.userId && (item.augmentId === "A05" || item.augmentId === "A06"))
+      .map((item) => item.augmentId);
+    return [player.userId, [...(context.ownedByUser[player.userId] ?? []), ...consumedReplacementCards]];
+  }));
 }
 
 function commitTransition(
@@ -183,7 +313,16 @@ function commitTransition(
     actorUserId,
     detectG01TriggerBreakdown(before, after, actorUserId, context.ownedByUser),
   );
-  context.engine = after;
+  const beforeActor = currentPlayer(before).userId;
+  const afterActor = currentPlayer(after).userId;
+  if (beforeActor !== afterActor) {
+    const runtime = after.augmentRuntime?.[beforeActor];
+    if (runtime?.plagueTurnActive) {
+      runtime.plaguePieceIds = {};
+      runtime.plagueTurnActive = false;
+    }
+  }
+  context.engine = applyPassiveSpecialWinner(after, context.ownedByUser);
 }
 
 function applyDueAugmentEvents(context: SimulationContext) {
@@ -196,18 +335,34 @@ function applyDueAugmentEvents(context: SimulationContext) {
     if (context.engine.winnerUserId) return;
 
     const tier = sequence[event.logicalPhase - 1];
-    const excludedIds = context.ruleset.excludedAugmentIdsByLogicalPhase?.[event.logicalPhase];
+    const baseExcludedIds = context.ruleset.excludedAugmentIdsByLogicalPhase?.[event.logicalPhase] ?? [];
+    const excludedIds = [...baseExcludedIds, ...(canReceiveA04(context, eventIndex) ? [] : ["A04"])];
+    const excludedIdsByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      player.pieces.some((piece) => piece.status === "WAITING") ? [] : ["A10"],
+    ]));
+    const a04UpgradePendingByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      Boolean(context.engine.augmentRuntime?.[player.userId]?.a04UpgradeNextAugment),
+    ]));
+    const tierByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      a04UpgradePendingByUser[player.userId] ? upgradedAugmentTier(tier) : tier,
+    ])) as Record<string, AugmentTier>;
     const rareSpecialChance = context.ruleset.rareSpecialOfferChancePerEvent;
     const slotSpecialMaxGameExposure = context.ruleset.specialMaxGameExposureByLogicalPhase?.[event.logicalPhase];
     const specialChancePerDraw = slotSpecialMaxGameExposure != null
       ? chancePerDrawForMaxGameExposure(slotSpecialMaxGameExposure, context.engine.players.length)
       : undefined;
+    const offerOwnedByUser = ownedIdsForOffers(context);
     let offers = buildPhaseOffers({
       seed: context.seed,
       phase: event.logicalPhase,
       tier,
+      tierByUser,
       players: context.engine.players.map((player) => ({ userId: player.userId, seat: player.seat })),
-      ownedByUser: context.ownedByUser,
+      excludedIdsByUser,
+      ownedByUser: offerOwnedByUser,
       excludedIds,
       excludeSpecial: specialChancePerDraw == null && rareSpecialChance != null,
       specialChancePerDraw,
@@ -242,16 +397,59 @@ function applyDueAugmentEvents(context: SimulationContext) {
 
     for (const offer of offers) {
       const visible = offer.offerIds.slice(0, 3);
-      const selectedId = context.rng.augment.pick(visible);
       const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
       if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);
+      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
+      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);
 
-      context.ownedByUser[offer.userId] = upgradeOwnedList(context.ownedByUser[offer.userId] ?? [], selectedId);
-      if (selectedId === "G16" || selectedId === "P14") {
-        const pieceId = setupPieceId(player);
+      const acquiredId = selectedId === "A05" || selectedId === "A06"
+        ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
+        : selectedId;
+
+      context.ownedByUser[offer.userId] = upgradeOwnedList(context.ownedByUser[offer.userId] ?? [], acquiredId);
+      if (acquiredId === "P02") context.engine = applyMoonwalkAcquisitionScatter(context.engine, offer.userId, context.rng.effect.next);
+      context.engine.augmentRuntime ??= {};
+      context.engine.augmentRuntime[offer.userId] ??= {};
+      const ideaRuntime = context.engine.augmentRuntime[offer.userId];
+      if (a04UpgradePendingByUser[offer.userId]) delete ideaRuntime.a04UpgradeNextAugment;
+      if (acquiredId === "A04") armA04OnAcquisition(context.engine, offer.userId);
+      if (acquiredId === "A12") ideaRuntime.walkingTrailSegment = context.rng.effect.int(4);
+      if (acquiredId === "A01") {
+        ideaRuntime.gravityExplosionRound = context.engine.round;
+        ideaRuntime.gravityExplosionResolved = false;
+      }
+      if (acquiredId === "A02") armGachaMachineOnAcquisition(context.engine, offer.userId);
+      if (acquiredId === "A08") {
+        const beforeUpheaval = context.engine;
+        const afterUpheaval = applyGreatUpheaval(
+          beforeUpheaval,
+          offer.userId,
+          context.ownedByUser,
+          context.setupsByUser,
+          context.rng.effect.next,
+        );
+        commitTransition(context, beforeUpheaval, afterUpheaval, offer.userId, "augment_event");
+      }
+      if (acquiredId === "A13") armWormholeOnAcquisition(context.engine, offer.userId);
+      if (acquiredId === "A15") {
+        const owner = context.engine.players.find((candidate) => candidate.userId === offer.userId);
+        const waiting = owner?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
+        if (waiting.length) {
+          const target = waiting[context.rng.effect.int(waiting.length)] ?? waiting[0];
+          context.engine = applyTurtleAndHarePlacement(context.engine, offer.userId, target.id);
+        }
+      }
+      if (acquiredId === "A10") {
+        const betrayal = applyBetrayalTransfer(context.engine, offer.userId, context.rng.effect.next);
+        context.engine = betrayal.engine;
+        repairTransferredSetup(context, offer.userId, betrayal.transferredPieceId);
+        maybeDeclareBetrayalSourceWinner(context, offer.userId);
+      }
+      if (acquiredId === "G16" || acquiredId === "P14") {
+        const pieceId = setupPieceId(player, acquiredId);
         if (pieceId) {
           context.setupsByUser[offer.userId] ??= {};
-          context.setupsByUser[offer.userId][selectedId] = { pieceId };
+          context.setupsByUser[offer.userId][acquiredId] = { pieceId };
         }
       }
 
@@ -264,6 +462,17 @@ function applyDueAugmentEvents(context: SimulationContext) {
         afterRound: event.afterRound,
         tier: AUGMENT_BY_ID.get(selectedId)?.tier ?? tier,
       });
+      if (acquiredId !== selectedId) {
+        context.acquisitions.push({
+          userId: offer.userId,
+          seat: player.seat,
+          augmentId: acquiredId,
+          acquisitionIndex: eventIndex + 1,
+          logicalPhase: event.logicalPhase,
+          afterRound: event.afterRound,
+          tier: AUGMENT_BY_ID.get(acquiredId)?.tier ?? tier,
+        });
+      }
     }
 
     if (eventIndex === 0 && context.firstAugmentAppliedRound == null) {
@@ -296,6 +505,22 @@ function advanceTurnForVacancy(engine: GameEngineState) {
   engine.pendingStackChoice = null;
 }
 
+function maybeApplyUniverseFreeze(context: SimulationContext) {
+  const engine = context.engine;
+  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
+  const player = currentPlayer(engine);
+  const remaining = engine.augmentRuntime?.[player.userId]?.universeFreezeTurnsRemaining ?? 0;
+  if (remaining <= 0) return false;
+  const next = structuredClone(engine);
+  next.augmentRuntime ??= {};
+  next.augmentRuntime[player.userId] ??= {};
+  next.augmentRuntime[player.userId].universeFreezeTurnsRemaining = remaining - 1;
+  advanceTurnForVacancy(next);
+  next.lastAction = `${player.displayName}: 우주의 중심 · 이동 정지`;
+  context.engine = next;
+  return true;
+}
+
 function maybeApplyVacancySkip(context: SimulationContext) {
   const engine = context.engine;
   if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
@@ -312,16 +537,134 @@ function maybeApplyVacancySkip(context: SimulationContext) {
     runtime.vacancySkipsRemaining = 2;
   }
   const remaining = runtime.vacancySkipsRemaining ?? 0;
-  if (remaining <= 0) return false;
+  if (remaining <= 0) {
+    if (runtime.vacancyReturnBonusPending && !runtime.vacancyReturnBonusGranted) {
+      runtime.vacancyReturnBonusPending = false;
+      runtime.vacancyReturnBonusGranted = true;
+      next.pendingRolls.push("AUGMENT");
+      next.lastAction = `${player.displayName}: 자리비움 복귀 · 추가 던지기 1회`;
+      context.engine = next;
+      return true;
+    }
+    return false;
+  }
 
   runtime.vacancySkipsRemaining = remaining - 1;
   const remainingAfter = runtime.vacancySkipsRemaining;
-  advanceTurnForVacancy(next);
-  const following = currentPlayer(next);
-  next.lastAction = remainingAfter > 0
+  if (remainingAfter <= 0) runtime.vacancyReturnBonusPending = true;
+  const afterExpiry = expireWormholeForCurrentRound(next, player.userId, owned);
+  advanceTurnForVacancy(afterExpiry);
+  const following = currentPlayer(afterExpiry);
+  afterExpiry.lastAction = remainingAfter > 0
     ? `${player.displayName}: 자리비움 · 턴 스킵 (${remainingAfter}회 남음) · ${following.displayName}의 턴`
-    : `${player.displayName}: 자리비움 종료 · Round 9까지 기본 양수 이동 +1 · ${following.displayName}의 턴`;
-  context.engine = next;
+    : `${player.displayName}: 자리비움 종료 · 다음 자기 턴 추가 던지기 1회 · 이후 전진 이동 +1 · ${following.displayName}의 턴`;
+  context.engine = afterExpiry;
+  return true;
+}
+
+function maybeUseGachaMachine(context: SimulationContext) {
+  const engine = context.engine;
+  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
+  const actor = currentPlayer(engine);
+  const owned = actorOwned(context, actor.userId);
+  if (!gachaMachineIsReady(engine, actor.userId, owned)) return false;
+
+  const ownCandidates = isForcedRelocationImmune(owned)
+    ? []
+    : actor.pieces
+      .filter((piece) => piece.status === "ON_BOARD" && piece.node != null && piece.node !== 29)
+      .sort((left, right) => left.pathHistory.length - right.pathHistory.length);
+  const opponentCandidates = engine.players
+    .filter((player) => (
+      player.userId !== actor.userId
+      && !isForcedRelocationImmune(actorOwned(context, player.userId))
+    ))
+    .flatMap((player) => player.pieces.map((piece) => ({ player, piece })))
+    .filter(({ piece }) => piece.status === "ON_BOARD" && piece.node != null && piece.node !== 1)
+    .sort((left, right) => right.piece.pathHistory.length - left.piece.pathHistory.length);
+
+  const ownTarget = ownCandidates[0];
+  const opponentTarget = opponentCandidates[0];
+  if (!ownTarget && !opponentTarget) return false;
+
+  const ownValue = ownTarget ? Math.max(0, 18 - ownTarget.pathHistory.length) : -1;
+  const opponentValue = opponentTarget ? opponentTarget.piece.pathHistory.length : -1;
+  const targetUserId = opponentValue > ownValue && opponentTarget ? opponentTarget.player.userId : actor.userId;
+  const targetPiece = opponentValue > ownValue && opponentTarget ? opponentTarget.piece : ownTarget;
+  const desiredNode = targetUserId === actor.userId ? 29 : 1;
+  if (!targetPiece) return false;
+
+  const before = context.engine;
+  const result = applyGachaMachine(
+    before,
+    actor.userId,
+    targetUserId,
+    targetPiece.id,
+    desiredNode,
+    context.ownedByUser,
+    context.rng.effect.next,
+  );
+  commitTransition(context, before, result.engine, actor.userId, "augment_event");
+  return true;
+}
+
+function maybeUseMarginExit(_context: SimulationContext) {
+  return false;
+}
+
+function maybeReturnMargin(_context: SimulationContext, _engine: GameEngineState, _userId: string) {
+  return null;
+}
+
+function maybeUseWormhole(context: SimulationContext) {
+  const engine = context.engine;
+  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
+  const actor = currentPlayer(engine);
+  const owned = context.ownedByUser[actor.userId] ?? [];
+  if (!wormholeIsOpen(engine, actor.userId, owned)) return false;
+
+  const groups = new Map<string, PieceState[]>();
+  for (const piece of actor.pieces) {
+    if (piece.status !== "ON_BOARD" || piece.node == null) continue;
+    const list = groups.get(piece.groupId) ?? [];
+    list.push(piece);
+    groups.set(piece.groupId, list);
+  }
+
+  if (!groups.size) {
+    context.engine = expireWormholeForCurrentRound(engine, actor.userId, owned);
+    return false;
+  }
+
+  if (engine.results.length > 0 && groups.size === 1) {
+    const onlyGroupId = groups.keys().next().value as string | undefined;
+    const hasCompatibleWaitingPiece = actor.pieces.some((piece) => (
+      piece.status === "WAITING"
+      && isGroupUsableWithAugments(engine, actor.userId, piece.groupId, owned, actorSetups(context, actor.userId))
+    )) && engine.results.some((result) => (
+      !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)
+    ));
+    const hasMarginReturn = owned.includes("A16")
+      && actor.pieces.some((piece) => piece.status === "MARGIN")
+      && engine.results.some((result) => !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face));
+    if (onlyGroupId && !hasCompatibleWaitingPiece && !hasMarginReturn) {
+      context.engine = expireWormholeForCurrentRound(engine, actor.userId, owned);
+      return false;
+    }
+  }
+
+  const selected = [...groups.entries()].sort((left, right) => {
+    const leftProgress = Math.max(...left[1].map((piece) => piece.pathHistory.length));
+    const rightProgress = Math.max(...right[1].map((piece) => piece.pathHistory.length));
+    if (leftProgress !== rightProgress) return leftProgress - rightProgress;
+    if (left[1].length !== right[1].length) return right[1].length - left[1].length;
+    return left[0].localeCompare(right[0]);
+  })[0];
+  if (!selected) return false;
+
+  const before = structuredClone(engine);
+  const next = applyWormholeTurn(engine, actor.userId, selected[0], owned);
+  commitTransition(context, before, next, actor.userId, "wormhole");
   return true;
 }
 
@@ -489,6 +832,7 @@ function groupRepresentativesForBot(engine: GameEngineState, userId: string, own
   const allowFinished = owned.includes("P02");
   return player.pieces.filter((piece) => {
     if (seen.has(piece.groupId)) return false;
+    if (piece.status === "WORMHOLE" || piece.status === "MARGIN") return false;
     if (piece.status === "FINISHED" && !allowFinished) return false;
     seen.add(piece.groupId);
     return true;
@@ -613,7 +957,7 @@ function maybeAllocateNumberPool(context: SimulationContext, engine: GameEngineS
 
 function maybeUseGrandUnity(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  if (!owned.includes("P11") || engine.stage !== "AWAITING_ROLL") return null;
+  if (!owned.includes("P11") || owned.includes("G01") || engine.stage !== "AWAITING_ROLL") return null;
   if (engine.augmentRuntime?.[userId]?.grandUnityUsed) return null;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return null;
@@ -642,7 +986,7 @@ function resolveRollChoice(context: SimulationContext, engine: GameEngineState, 
 
   if (pending.kind === "DUAL") {
     const scoreFace = (face: (typeof pending.faces)[number]) => (
-      baseStepsForFace(face) + (grantsFaceExtraRoll(face, owned) ? 3 : 0)
+      baseStepsForFace(face) + (canGrantFaceExtraRoll(engine, userId, face, owned) ? 3 : 0)
     );
     const choiceIndex = scoreFace(pending.faces[1]) > scoreFace(pending.faces[0]) ? 1 : 0;
     const next = resolveDualRollChoice(engine, choiceIndex, nextTokenId(context, "dual"), owned, actorSetups(context, userId));
@@ -663,6 +1007,9 @@ function executeRoll(context: SimulationContext, engine: GameEngineState, userId
     const next = structuredClone(engine);
     next.pendingRolls.shift();
     const actorName = currentPlayer(next).displayName;
+    if (!owned.includes("S16") && next.pendingRolls.length === 0) {
+      discardUnusableResults(next, owned, actorSetups(context, userId));
+    }
     if (owned.includes("S16")) {
       next.results.push({
         id: nextTokenId(context, "nak-compensation"),
@@ -785,13 +1132,73 @@ function resolveSplitChoice(context: SimulationContext, engine: GameEngineState,
   return finalizeAction(before, next, userId, context, "split");
 }
 
+function maybeApplyBombExplosion(context: SimulationContext) {
+  if (context.engine.round < 6) return false;
+  const owners = context.engine.players
+    .filter((player) => (context.ownedByUser[player.userId] ?? []).includes("A07"))
+    .filter((player) => !context.engine.augmentRuntime?.[player.userId]?.bombResolved)
+    .map((player) => player.userId);
+  if (!owners.length) return false;
+  const before = context.engine;
+  const result = applyBombExplosion(before, owners, context.ownedByUser);
+  context.engine = applyPassiveSpecialWinner(result.engine, context.ownedByUser);
+  commitTransition(context, before, context.engine, owners[0], "augment_event");
+  return true;
+}
+
+function injectBombBonusRolls(engineInput: GameEngineState, userId: string, ownedIds: string[]) {
+  if (!ownedIds.includes("A07") || engineInput.stage !== "AWAITING_ROLL") return engineInput;
+  const pending = engineInput.augmentRuntime?.[userId]?.bombBonusRollsPending ?? 0;
+  if (pending <= 0) return engineInput;
+  const engine = structuredClone(engineInput);
+  engine.augmentRuntime ??= {};
+  engine.augmentRuntime[userId] ??= {};
+  engine.augmentRuntime[userId].bombBonusRollsPending = 0;
+  for (let index = 0; index < pending; index += 1) engine.pendingRolls.push("AUGMENT");
+  return engine;
+}
+
+function maybeApplyGravityExplosion(context: SimulationContext) {
+  for (const player of context.engine.players) {
+    if (!(context.ownedByUser[player.userId] ?? []).includes("A01")) continue;
+    const runtime = context.engine.augmentRuntime?.[player.userId];
+    if (runtime?.gravityExplosionRound == null) continue;
+    if (context.engine.round < runtime.gravityExplosionRound) continue;
+    const before = context.engine;
+    const next = applyGravityExplosion(before, player.userId, context.ownedByUser, context.rng.effect.next);
+    commitTransition(context, before, next, player.userId, "augment_event");
+    return true;
+  }
+  return false;
+}
+
 function stepGame(context: SimulationContext) {
   if (applyDueAugmentEvents(context)) return;
   if (context.engine.winnerUserId) return;
+  const turnOwner = currentPlayer(context.engine);
+  const turnRuntime = context.engine.augmentRuntime?.[turnOwner.userId];
+  if (turnRuntime && Object.keys(turnRuntime.plaguePieceIds ?? {}).length > 0 && turnRuntime.plagueTurnActive !== true) {
+    turnRuntime.plagueTurnActive = true;
+  }
+  if (maybeApplyBombExplosion(context)) return;
+  if (context.engine.winnerUserId) return;
+  if (maybeApplyGravityExplosion(context)) return;
+
+  const returnActor = currentPlayer(context.engine);
+  context.engine = resolveDueWormholeReturns(
+    context.engine,
+    returnActor.userId,
+    actorOwned(context, returnActor.userId),
+    actorSetups(context, returnActor.userId),
+    context.rng.effect.next,
+  );
+  if (context.engine.winnerUserId) return;
+  if (maybeApplyUniverseFreeze(context)) return;
   if (maybeApplyVacancySkip(context)) return;
 
   const actorBeforeInjection = currentPlayer(context.engine);
   if (context.engine.stage !== "CAPTURE_CHOICE") {
+    context.engine = injectBombBonusRolls(context.engine, actorBeforeInjection.userId, actorOwned(context, actorBeforeInjection.userId));
     context.engine = injectTomorrowResult(context.engine, actorBeforeInjection.userId, actorOwned(context, actorBeforeInjection.userId));
   }
 
@@ -799,6 +1206,10 @@ function stepGame(context: SimulationContext) {
   const userId = actor.userId;
 
   if (context.engine.stage === "AWAITING_ROLL") {
+    if (maybeUseGachaMachine(context)) return;
+    if (maybeUseWormhole(context)) return;
+    if (maybeUseMarginExit(context)) return;
+    queueA04BonusForNextBasic(context.engine, userId, actorOwned(context, userId));
     const before = context.engine;
     const grandUnity = maybeUseGrandUnity(context, before, userId);
     const next = grandUnity ?? executeRoll(context, before, userId);
@@ -818,6 +1229,13 @@ function stepGame(context: SimulationContext) {
     context.engine = normalizeNumberPool(context.engine, userId, actorOwned(context, userId));
 
     let before = context.engine;
+    const marginReturn = maybeReturnMargin(context, before, userId);
+    if (marginReturn) {
+      commitTransition(context, before, marginReturn, userId, "margin_return");
+      return;
+    }
+
+    before = context.engine;
     const saved = maybeSaveTomorrow(context, before, userId);
     if (saved) {
       commitTransition(context, before, saved, userId, "save_result");
@@ -840,7 +1258,49 @@ function stepGame(context: SimulationContext) {
 
     before = context.engine;
     const next = bestMove(context, before, userId);
-    if (!next) throw new Error(`No legal move candidate for ${userId} at turn ${context.engine.turnNumber}.`);
+    if (!next) {
+      const plaguePieceIds = context.engine.augmentRuntime?.[userId]?.plaguePieceIds ?? {};
+      const hasBlockedInfectedWaitingPiece = actor.pieces.some((piece) => (
+        piece.status === "WAITING" && Boolean(plaguePieceIds[piece.id])
+      ));
+      if (hasBlockedInfectedWaitingPiece) {
+        const skipped = structuredClone(before);
+        skipped.results = [];
+        if (skipped.pendingRolls.length > 0) {
+          skipped.stage = "AWAITING_ROLL";
+        } else {
+          advanceTurnForVacancy(skipped);
+        }
+        skipped.lastAction = `${actor.displayName}: 역병으로 출발할 수 없어 이동 결과 소멸`;
+        commitTransition(context, before, skipped, userId, "move");
+        return;
+      }
+      const turtleLocks = context.engine.augmentRuntime?.[userId]?.turtleLockedUntilRoundByPiece ?? {};
+      const boardGroupIds = [...new Set(actor.pieces
+        .filter((piece) => piece.status === "ON_BOARD")
+        .map((piece) => piece.groupId))];
+      const hasWaitingPiece = actor.pieces.some((piece) => piece.status === "WAITING");
+      const allBoardGroupsTurtleLocked = boardGroupIds.length > 0 && boardGroupIds.every((groupId) => (
+        actor.pieces.some((piece) => (
+          piece.groupId === groupId
+          && piece.status === "ON_BOARD"
+          && (turtleLocks[piece.id] ?? 0) > context.engine.round
+        ))
+      ));
+      if (!hasWaitingPiece && allBoardGroupsTurtleLocked) {
+        const skipped = structuredClone(before);
+        skipped.results = [];
+        if (skipped.pendingRolls.length > 0) {
+          skipped.stage = "AWAITING_ROLL";
+        } else {
+          advanceTurnForVacancy(skipped);
+        }
+        skipped.lastAction = `${actor.displayName}: 토끼와 거북이 이동 제한으로 이동 결과 소멸`;
+        commitTransition(context, before, skipped, userId, "move");
+        return;
+      }
+      throw new Error(`No legal move candidate for ${userId} at turn ${context.engine.turnNumber}.`);
+    }
     commitTransition(context, before, next, userId, "move");
     return;
   }

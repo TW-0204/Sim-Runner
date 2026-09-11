@@ -1,4 +1,4 @@
-import { finalStepsForRoll, grantsFaceExtraRoll, type PlayerAugmentSetups } from "@/lib/augments/effects";
+import { consumeFaceExtraRollGrant, finalStepsForRoll, type PlayerAugmentSetups } from "@/lib/augments/effects";
 import { applyRoll, currentPlayer } from "./engine";
 import { baseStepsForFace, faceLabel } from "./roll";
 import { settleAfterRollResolution } from "./turn-settlement";
@@ -27,32 +27,19 @@ function applyRevengeBasicBonus(engine: GameEngineState, userId: string, ownedId
   return { ...token, finalSteps: token.finalSteps + 1 };
 }
 
-function applyVacancyBasicBonus(engine: GameEngineState, userId: string, ownedIds: string[], token: RollToken) {
-  if (!has(ownedIds, "S13") || token.source !== "BASIC" || token.face === "BACKDO" || token.finalSteps <= 0) return token;
-  const runtime = engine.augmentRuntime?.[userId];
-  if (!runtime?.vacancyInitialized || (runtime.vacancySkipsRemaining ?? 2) > 0) return token;
-  if (engine.round > 9) return token;
-  return { ...token, finalSteps: token.finalSteps + 1 };
-}
-
 function applyBasicMovementBonuses(engine: GameEngineState, userId: string, ownedIds: string[], token: RollToken) {
-  return applyVacancyBasicBonus(
-    engine,
-    userId,
-    ownedIds,
-    applyRevengeBasicBonus(engine, userId, ownedIds, token),
-  );
+  return applyRevengeBasicBonus(engine, userId, ownedIds, token);
 }
 
 export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
   if (!has(ownedIds, "P19")) return 0;
-  return engine.augmentRuntime?.[userId]?.godHandCharges ?? 1;
+  return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;
 }
 
 function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
   if (!has(ownedIds, "P19")) return;
   const runtime = runtimeFor(engine, userId);
-  runtime.godHandCharges ??= 1;
+  runtime.godHandCharges ??= 0;
   runtime.godHandBasicProgress ??= 0;
 
   if (runtime.godHandSkipNextBasicProgress) {
@@ -67,7 +54,7 @@ function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedId
   }
 
   runtime.godHandBasicProgress += 1;
-  if (runtime.godHandBasicProgress >= 3) {
+  if (runtime.godHandBasicProgress >= 2) {
     runtime.godHandCharges = 1;
     runtime.godHandBasicProgress = 0;
   }
@@ -205,7 +192,7 @@ export function rerollDoResult(
   };
   token = applyBasicMovementBonuses(engine, player.userId, ownedIds, token);
   engine.results.push(token);
-  if (grantsFaceExtraRoll(rerolledFace, ownedIds)) engine.pendingRolls.push("YUT_MO");
+  if (consumeFaceExtraRollGrant(engine, player.userId, rerolledFace, ownedIds)) engine.pendingRolls.push("YUT_MO");
   recordGodHandBasicRoll(engine, player.userId, ownedIds);
   engine.lastAction = `${player.displayName}: 다시 던져 ${faceLabel(rerolledFace)}!`;
   return settleAfterRollResolution(engine, ownedIds, setups);
@@ -229,7 +216,7 @@ export function applyGodHandRoll(
   const engine = clone(engineInput);
   const player = currentPlayer(engine);
   const runtime = runtimeFor(engine, player.userId);
-  runtime.godHandCharges ??= 1;
+  runtime.godHandCharges ??= 0;
   runtime.godHandBasicProgress ??= 0;
   if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");
   runtime.godHandCharges -= 1;

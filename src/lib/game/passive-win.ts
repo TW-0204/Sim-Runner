@@ -1,5 +1,15 @@
 import type { GameEngineState } from "./types";
 
+export function isMoonwalkHome(engine: GameEngineState, userId: string) {
+  const originalPieces = engine.players.flatMap((player) => player.pieces).filter((piece) => (
+    piece.betrayalOriginalOwnerUserId === userId
+    || (piece.ownerUserId === userId && piece.betrayalOriginalOwnerUserId == null)
+  ));
+  return originalPieces.length === 4 && originalPieces.every((piece) => (
+    piece.ownerUserId === userId && piece.status === "WAITING"
+  ));
+}
+
 export function passiveMoonwalkWinner(
   engine: GameEngineState,
   ownedByUser: Record<string, string[]>,
@@ -7,7 +17,7 @@ export function passiveMoonwalkWinner(
   if (engine.winnerUserId) return null;
   for (const player of engine.players) {
     if (!(ownedByUser[player.userId] ?? []).includes("P02")) continue;
-    if (!player.pieces.every((piece) => piece.status === "WAITING")) continue;
+    if (!isMoonwalkHome(engine, player.userId)) continue;
     return player;
   }
   return null;

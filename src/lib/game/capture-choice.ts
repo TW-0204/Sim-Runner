@@ -1,13 +1,20 @@
 import {
   applyWaterGhostOne,
+  betrayalCaptureBonusRoll,
   blocksCaptureExtraRoll,
   clearGroupMoveFixedToOne,
   clearJunctionBoostForGroup,
   clearPathControlForGroup,
+  clearPlagueForGroup,
+  clearTurtleLockForGroup,
+  infectPlagueGroup,
+  infectPlaguePieceIds,
   isCaptureImmune,
+  isPlagueGroup,
   isSanctuaryGroup,
   recordCaptureAgainstPlayer,
   recordEnemyCaptures,
+  resetAthleteAccelerationForGroup,
   shouldReturnAttackerWithWaterGhostTwo,
   specialWinForPlayer,
 } from "@/lib/augments/effects";
@@ -111,17 +118,17 @@ function capturedGroupsOnPath(
   return [...groups.values()].filter((entry) => entry.pieces.length > 0 && wasCaptured(after, entry.pieces, ownedByUser));
 }
 
-function restoreInsuredGroup(after: GameEngineState, beforePieces: PieceState[]) {
-  const player = playerFor(after, beforePieces[0]?.ownerUserId ?? "");
-  if (!player) return;
-  for (const original of beforePieces) {
-    const piece = player.pieces.find((candidate) => candidate.id === original.id);
-    if (!piece) continue;
-    piece.status = "ON_BOARD";
-    piece.node = original.node;
-    piece.groupId = original.groupId;
-    piece.hasEntered = original.hasEntered;
-  }
+function restoreOneInsuredPiece(after: GameEngineState, beforePieces: PieceState[]) {
+  const original = [...beforePieces].sort((left, right) => left.id.localeCompare(right.id))[0];
+  if (!original) return null;
+  const player = playerFor(after, original.ownerUserId);
+  const piece = player?.pieces.find((candidate) => candidate.id === original.id);
+  if (!piece) return null;
+  piece.status = "ON_BOARD";
+  piece.node = original.node;
+  piece.groupId = piece.id;
+  piece.hasEntered = original.hasEntered;
+  return piece.id;
 }
 
 function nextNodesAfterDestination(destination: number, result: RollToken, ownedIds: string[]) {
@@ -229,20 +236,12 @@ export function maybePauseCaptureChoices(
   const after = structuredClone(afterInput);
   const decisions: CaptureDecision[] = [];
 
-  for (const { node, pieces: beforePieces } of captured) {
+  for (const { pieces: beforePieces } of captured) {
     const victim = beforePieces[0];
     if (!victim || beforePieces.length < 2) continue;
     const victimOwned = args.ownedByUser[victim.ownerUserId] ?? [];
     if (!victimOwned.includes("G11")) continue;
-    restoreInsuredGroup(after, beforePieces);
-    decisions.push({
-      kind: "INSURANCE",
-      chooserUserId: victim.ownerUserId,
-      victimUserId: victim.ownerUserId,
-      victimGroupId: victim.groupId,
-      node,
-      pieceIds: beforePieces.map((piece) => piece.id),
-    });
+    restoreOneInsuredPiece(after, beforePieces);
   }
 
   const attackerOwned = args.ownedByUser[args.attackerUserId] ?? [];
@@ -316,6 +315,7 @@ function returnAttackerAfterEnemyEffect(
   clearGroupMoveFixedToOne(engine, attackerUserId, attackerGroupId);
   clearJunctionBoostForGroup(engine, attackerUserId, attackerGroupId);
   clearPathControlForGroup(engine, attackerUserId, attackerGroupId);
+  resetAthleteAccelerationForGroup(engine, attackerUserId, attackerGroupId, attackerOwned);
   const group = player.pieces.filter((piece) => piece.groupId === attackerGroupId && piece.status === "ON_BOARD");
   returnPiecesAfterEnemyCapture(group, attackerOwned);
 }
@@ -362,14 +362,20 @@ function captureDoubleHitTarget(
     : null;
 
   if (!blocksCaptureExtraRoll(pieces.length, victimOwned)) pending.resumePendingRolls.push("CAPTURE");
+  if (betrayalCaptureBonusRoll(engine, decision.attackerUserId, decision.attackerGroupId, target.victimUserId) > 0) pending.resumePendingRolls.push("AUGMENT");
   recordCaptureAgainstPlayer(engine, target.victimUserId, victimOwned);
   applyWaterGhostOne(engine, decision.attackerUserId, decision.attackerGroupId, victimOwned);
   const attackerReturned = shouldReturnAttackerWithWaterGhostTwo(victimOwned);
   clearGroupMoveFixedToOne(engine, target.victimUserId, target.victimGroupId);
   clearJunctionBoostForGroup(engine, target.victimUserId, target.victimGroupId);
   clearPathControlForGroup(engine, target.victimUserId, target.victimGroupId);
+  resetAthleteAccelerationForGroup(engine, target.victimUserId, target.victimGroupId, victimOwned);
+  clearTurtleLockForGroup(engine, target.victimUserId, target.victimGroupId);
+  const capturedPieceIds = pieces.map((piece) => piece.id);
+  clearPlagueForGroup(engine, target.victimUserId, target.victimGroupId);
   returnPiecesAfterEnemyCapture(pieces, victimOwned);
   const attackerOwned = ownedByUser[decision.attackerUserId] ?? [];
+  if (attackerOwned.includes("A14")) infectPlaguePieceIds(engine, target.victimUserId, capturedPieceIds);
   recordEnemyCaptures(engine, decision.attackerUserId, 1, attackerOwned);
   if (attackerReturned) {
     returnAttackerAfterEnemyEffect(engine, decision.attackerUserId, decision.attackerGroupId, attackerOwned);
@@ -378,19 +384,7 @@ function captureDoubleHitTarget(
   const won = declareSpecialWinner(engine, decision.attackerUserId, attackerOwned);
   if (won) return true;
 
-  if (insuredOriginals?.length) {
-    restoreInsuredGroup(engine, insuredOriginals);
-    const original = insuredOriginals[0];
-    pending.decisions.push({
-      kind: "INSURANCE",
-      chooserUserId: target.victimUserId,
-      victimUserId: target.victimUserId,
-      victimGroupId: target.victimGroupId,
-      node: target.node,
-      pieceIds: insuredOriginals.map((piece) => piece.id),
-    });
-    if (original?.node !== target.node) throw new Error("보험 대상 위치가 올바르지 않습니다.");
-  }
+  if (insuredOriginals?.length) restoreOneInsuredPiece(engine, insuredOriginals);
   return false;
 }
 

@@ -81,7 +81,7 @@ export function saveResultForTomorrow(
   runtime.tomorrowStoredResult = {
     face: result.face,
     baseSteps: result.baseSteps,
-    finalSteps: result.finalSteps,
+    finalSteps: result.finalSteps + (result.finalSteps > 0 ? 1 : result.finalSteps < 0 ? -1 : 0),
     forbidShortcuts: result.forbidShortcuts,
     numericBatchId: result.numericBatchId,
     numericAllocated: result.numericAllocated,
