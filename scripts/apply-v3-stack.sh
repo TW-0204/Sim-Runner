@@ -26,3 +26,4 @@ python scripts/apply-stall-fixes-v4.py
 python scripts/apply-stall-fixes-v5.py
 python scripts/apply-stall-fixes-v6.py
 python scripts/apply-stall-fixes-v7.py
+python scripts/apply-stall-fixes-v8.py
