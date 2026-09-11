@@ -1,6 +1,11 @@
 name: Balance Rework V3 Independent 90K
 
 on:
+  push:
+    branches:
+      - experiment/s16
+    paths:
+      - '.github/workflows/balance-rework-v3-90k.yml'
   workflow_dispatch:
 
 permissions:
