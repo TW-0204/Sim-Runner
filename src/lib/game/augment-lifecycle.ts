@@ -1,8 +1,16 @@
 import {
   applyBetrayalTransfer,
+  armA04OnAcquisition,
   replacesNormalWinCondition,
   type PlayerAugmentSetups,
 } from "@/lib/augments/effects";
+import {
+  applyGreatUpheaval,
+  applyMoonwalkAcquisitionScatter,
+  applyTurtleAndHarePlacement,
+  armGachaMachineOnAcquisition,
+  armWormholeOnAcquisition,
+} from "./engine";
 import type { GameEngineState, PieceState } from "./types";
 
 export type SetupsByUser = Record<string, PlayerAugmentSetups>;
@@ -116,4 +124,94 @@ export function applyBetrayalAcquisitionLifecycle(
     ownedByUser[sourceUserId] ?? [],
   );
   return transfer;
+}
+
+export type AugmentAcquisitionLifecycleInput = {
+  engine: GameEngineState;
+  userId: string;
+  augmentId: string;
+  ownedByUser: Record<string, string[]>;
+  setupsByUser: SetupsByUser;
+  consumeA04UpgradePending?: boolean;
+  randomNext?: () => number;
+  randomInt?: (maxExclusive: number) => number;
+};
+
+export type AugmentAcquisitionLifecycleResult = {
+  engine: GameEngineState;
+  immediateTransitionFrom?: GameEngineState;
+};
+
+/**
+ * Applies the game-state side effects of acquiring one augment.
+ * Offer generation and which card to pick remain caller policy; the acquired card's
+ * state transition belongs to the game layer.
+ */
+export function applyAugmentAcquisitionLifecycle({
+  engine: engineInput,
+  userId,
+  augmentId,
+  ownedByUser,
+  setupsByUser,
+  consumeA04UpgradePending = false,
+  randomNext = Math.random,
+  randomInt = (maxExclusive) => Math.min(maxExclusive - 1, Math.floor(Math.random() * maxExclusive)),
+}: AugmentAcquisitionLifecycleInput): AugmentAcquisitionLifecycleResult {
+  let engine = engineInput;
+
+  // Preserve the effective-v11 ordering: P02 scatters before common idea-runtime setup.
+  if (augmentId === "P02") {
+    engine = applyMoonwalkAcquisitionScatter(engine, userId, randomNext);
+  }
+
+  engine.augmentRuntime ??= {};
+  engine.augmentRuntime[userId] ??= {};
+  const runtime = engine.augmentRuntime[userId];
+  if (consumeA04UpgradePending) delete runtime.a04UpgradeNextAugment;
+
+  if (augmentId === "A04") armA04OnAcquisition(engine, userId);
+  if (augmentId === "A12") runtime.walkingTrailSegment = randomInt(4);
+  if (augmentId === "A01") {
+    runtime.gravityExplosionRound = engine.round;
+    runtime.gravityExplosionResolved = false;
+  }
+  if (augmentId === "A02") armGachaMachineOnAcquisition(engine, userId);
+
+  if (augmentId === "A08") {
+    const before = engine;
+    const after = applyGreatUpheaval(
+      before,
+      userId,
+      ownedByUser,
+      setupsByUser,
+      randomNext,
+    );
+    return { engine: after, immediateTransitionFrom: before };
+  }
+
+  if (augmentId === "A13") armWormholeOnAcquisition(engine, userId);
+  if (augmentId === "A15") {
+    const owner = engine.players.find((candidate) => candidate.userId === userId);
+    const waiting = owner?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
+    if (waiting.length > 0) {
+      const target = waiting[randomInt(waiting.length)] ?? waiting[0];
+      engine = applyTurtleAndHarePlacement(engine, userId, target.id);
+    }
+  }
+
+  if (augmentId === "A10") {
+    engine = applyBetrayalAcquisitionLifecycle(
+      engine,
+      userId,
+      ownedByUser,
+      setupsByUser,
+      randomNext,
+    ).engine;
+  }
+
+  if (augmentId === "G16" || augmentId === "P14") {
+    initializeAcquiredPieceSetup(engine, userId, augmentId, setupsByUser);
+  }
+
+  return { engine };
 }
