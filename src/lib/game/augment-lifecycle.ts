@@ -83,7 +83,7 @@ export function applyBetrayalAcquisitionLifecycle(
     transfer.recipientUserId,
     transfer.transferredPieceId,
   );
-  repairInvalidAugmentSetups(transfer.engine, ownedByUser, setupsByUser);
+  transfer.engine = repairInvalidAugmentSetups(transfer.engine, ownedByUser, setupsByUser);
   maybeDeclareSourceWinnerAfterTransfer(
     transfer.engine,
     sourceUserId,
@@ -181,13 +181,15 @@ export function applyAugmentAcquisitionLifecycle({
   engine = dispatchAugmentHook("onAcquire", {
     engine,
     ownerUserId: userId,
+    actorUserId: userId,
     augmentId,
     ownedByUser,
     setupsByUser,
     randomNext,
     randomInt,
+    event: { acquiredAugmentId: augmentId },
   });
-  repairInvalidAugmentSetups(engine, ownedByUser, setupsByUser);
+  engine = repairInvalidAugmentSetups(engine, ownedByUser, setupsByUser);
 
   return { engine, immediateTransitionFrom };
 }
