@@ -2,6 +2,8 @@ name: S16 Nak Precision 1K
 
 on:
   push:
+    branches:
+      - experiment/s16
     paths:
       - '.github/workflows/s16-precision-1k.yml'
       - 'src/lib/augments/**'
