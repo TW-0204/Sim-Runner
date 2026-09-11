@@ -1,0 +1,54 @@
+name: Canonical Source Structure Check
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'AGENTS.md'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'AGENTS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Reject active legacy patch dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E \
+            'scripts/apply-v3-stack\.sh|python scripts/apply-[^ ]+\.py|python scripts/run-balance-rework-v3\.py' \
+            AGENTS.md .github/workflows scripts src; then
+            echo 'Active legacy patch dependency found outside archive.' >&2
+            exit 1
+          fi
+
+      - name: Reject precision source mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E \
+            'writeFileSync\([^\n]*src/lib/simulation/game\.ts|originalGameSource.*simulation/game|SIM_FORCED_AUGMENT_ID|SIM_FORCED_ACQUISITION_INDEX' \
+            scripts src; then
+            echo 'Runtime simulation source mutation detected.' >&2
+            exit 1
+          fi
+
+      - name: Run canonical smoke
+        run: bash scripts/run-s16-p10-smoke.sh
