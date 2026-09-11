@@ -1,19 +1,17 @@
-name: S16 + P10 Stack Smoke
+name: Canonical S16 + P10 Smoke
 
 on:
   push:
     paths:
       - '.github/workflows/s16-smoke.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
       - 'scripts/run-s16-p10-smoke.sh'
       - 'scripts/s16-precision-run.ts'
       - 'scripts/p10-overpass-probe.ts'
       - 'scripts/stall-fixes-v10-probe.ts'
       - 'scripts/balance-rework-v3-probe.ts'
-      - 'scripts/apply-v3-stack.sh'
-      - 'scripts/apply-s16-experiment.py'
-      - 'scripts/apply-p10-overpass.py'
-      - 'scripts/apply-stall-fixes-v10.py'
-      - 'scripts/apply-s15-log-cleanup.py'
   workflow_dispatch:
 
 permissions:
@@ -28,5 +26,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run current S16 + P10 stack smoke
+      - name: Run canonical S16 + P10 smoke
         run: bash scripts/run-s16-p10-smoke.sh
