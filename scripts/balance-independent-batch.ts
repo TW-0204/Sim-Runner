@@ -46,6 +46,19 @@ const result = runSimulationBatch({
 
 const elapsedSeconds = (Date.now() - startedAt) / 1000;
 const incompleteGames = result.summary.stalledGames + result.summary.actionLimitGames;
+const incompleteDetails = result.games
+  .filter((game) => game.status !== "COMPLETED")
+  .map((game) => ({
+    seed: game.seed,
+    status: game.status,
+    error: game.error ?? null,
+    round: game.round,
+    turnNumber: game.turnNumber,
+    actions: game.actions,
+    acquisitions: game.acquisitions,
+    failureDiagnostics: game.failureDiagnostics ?? null,
+  }));
+
 const payload = {
   metadata: {
     rulesetId: ruleset.id,
@@ -58,12 +71,24 @@ const payload = {
     elapsedSeconds,
   },
   summary: result.summary,
+  incompleteGames: incompleteDetails,
 };
 
 mkdirSync(outputDir, { recursive: true });
 const baseName = `batch-${playerCount}p-${batchId}-seed-${seedStart}`;
 const jsonPath = join(outputDir, `${baseName}.json`);
 const mdPath = join(outputDir, `${baseName}.md`);
+const incompleteLines = incompleteDetails.length > 0
+  ? [
+      "",
+      "## Incomplete seeds",
+      "",
+      ...incompleteDetails.map((game) => (
+        `- ${game.seed}: ${game.status} · round ${game.round} · turn ${game.turnNumber} · actions ${game.actions}${game.error ? ` · ${game.error}` : ""}`
+      )),
+    ]
+  : [];
+
 writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
 writeFileSync(mdPath, [
   `# Independent Balance Batch — ${playerCount}P / ${batchId}`,
@@ -75,11 +100,15 @@ writeFileSync(mdPath, [
   `- stalled: ${result.summary.stalledGames}`,
   `- action limit: ${result.summary.actionLimitGames}`,
   `- elapsed: ${elapsedSeconds.toFixed(1)}s`,
+  ...incompleteLines,
   "",
 ].join("\n"), "utf-8");
 
 console.error(`[independent] ${playerCount}p batch ${batchId} complete in ${elapsedSeconds.toFixed(1)}s`);
 console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${incompleteGames} incomplete`);
+if (incompleteDetails.length > 0) {
+  console.error(`[independent] incomplete seeds: ${incompleteDetails.map((game) => game.seed).join(", ")}`);
+}
 console.log(jsonPath);
 
 if (failOnIncomplete && incompleteGames > 0) process.exitCode = 1;
