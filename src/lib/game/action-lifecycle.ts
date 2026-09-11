@@ -1,4 +1,6 @@
 import type { PlayerAugmentSetups } from "@/lib/augments/effects";
+import { dispatchOwnedAugmentHooks } from "@/lib/augments/runtime-registry";
+import { repairInvalidAugmentSetups } from "@/lib/augments/setup";
 import {
   markAthleteDisqualified,
   markAthleteMovement,
@@ -52,6 +54,15 @@ export function finalizeAction(
   if (next.stage !== "CAPTURE_CHOICE") {
     next = normalizeNumberPool(next, postActionUserId, actorOwned(context, postActionUserId));
   }
+  next = dispatchOwnedAugmentHooks("afterAction", {
+    engine: next,
+    before,
+    ownerUserId: actorUserId,
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    actionKind,
+  });
+  repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
   return next;
 }
 
@@ -74,6 +85,15 @@ export function executeMoveAction(
     coexistence.ownedByUser,
   );
   coexistence.restore(next);
+  next = dispatchOwnedAugmentHooks("afterMove", {
+    engine: next,
+    before: turnSnapshot,
+    ownerUserId: userId,
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    actionKind: "move",
+  });
+  repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
   next = markNumberSplitSibling(engine, next, userId, args.groupId, args.resultId);
   next = maybePauseSelfRelianceAfterMovement(turnSnapshot, next, userId, owned);
   next = maybePauseCaptureChoices(turnSnapshot, next, {
