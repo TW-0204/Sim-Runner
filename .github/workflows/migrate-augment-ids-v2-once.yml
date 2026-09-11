@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           sed -i 's/if path == LEGACY_MAP_PATH:/if path in {LEGACY_MAP_PATH, DOC_PATH}:/' archive/migrations/migrate-augment-ids-v2.py
+          sed -i 's/Historical inactive A03 identity/Historical inactive identity/' archive/migrations/migrate-augment-ids-v2.py
           python archive/migrations/migrate-augment-ids-v2.py
 
       - name: Verify augment ID lifecycle
