@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { AUGMENT_BY_ID } from "@/lib/augments/catalog";
+import { AUGMENT_BY_ID, AUGMENTS } from "@/lib/augments/catalog";
 import {
   adjustedResultForGroup,
   canGrantFaceExtraRoll,
@@ -35,7 +35,9 @@ assert.equal(AUGMENT_BY_ID.get("S05")?.tier, "gold");
 assert.equal(AUGMENT_BY_ID.get("G10")?.tier, "silver");
 assert.equal(AUGMENT_BY_ID.get("A16")?.tier, "prism");
 assert.equal(AUGMENT_BY_ID.get("A16")?.timing, "first");
-for (const id of ["P18", "G02", "P01", "P05", "P07", "P15"]) assert.equal(AUGMENT_BY_ID.has(id), false, `${id} must be removed`);
+for (const id of ["P18", "G02", "P01", "P05", "P07", "P15"]) {
+  assert.equal(AUGMENTS.some((augment) => augment.id === id), false, `${id} must be excluded from the active pool`);
+}
 
 // P16 thresholds.
 assert.equal(huntCaptureTarget(2), 7);
