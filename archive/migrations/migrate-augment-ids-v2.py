@@ -18,7 +18,6 @@ MAPPING = {
     "A06": "AUG-049", "A07": "AUG-050", "A08": "AUG-051", "A09": "AUG-052",
     "A10": "AUG-053", "A11": "AUG-054", "A12": "AUG-055", "A13": "AUG-056",
     "A14": "AUG-057", "A15": "AUG-058", "A16": "AUG-059",
-    # Historical removed/inactive identities. They remain catalogued but never enter AUGMENTS.
     "G02": "AUG-060", "G14": "AUG-061", "P01": "AUG-062", "P05": "AUG-063",
     "P07": "AUG-064", "P15": "AUG-065", "P18": "AUG-066", "A03": "AUG-067",
 }
@@ -42,12 +41,13 @@ RETIRED_ENTRIES = [
     ("AUG-064", "물귀신 2", "WATER_GHOST", "Removed before the canonical ID migration."),
     ("AUG-065", "일심동체 2", "ONE_BODY", "Removed before the canonical ID migration."),
     ("AUG-066", "무임승차 구버전", None, "Old hitchhiker version removed before the canonical ID migration."),
-    ("AUG-067", "미사용 레거시 증강", None, "Historical inactive A03 identity; display metadata was not recovered."),
+    ("AUG-067", "미사용 레거시 증강", None, "Historical inactive identity; display metadata was not recovered."),
 ]
 
 ROOTS = [Path("src"), Path("scripts"), Path(".github/workflows"), Path("docs")]
 TOP_LEVEL = [Path("AGENTS.md"), Path("README.md")]
 TEXT_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".sh", ".yml", ".yaml", ".md", ".json"}
+CODE_SUFFIXES = {".ts", ".tsx", ".js", ".mjs"}
 LEGACY_MAP_PATH = Path("src/lib/augments/legacy-id-map.ts")
 CATALOG_PATH = Path("src/lib/augments/catalog.ts")
 INTEGRITY_PATH = Path("scripts/augment-id-integrity-check.ts")
@@ -76,6 +76,19 @@ def active_files():
             files.append(path)
     files.extend(path for path in TOP_LEVEL if path.exists())
     return files
+
+
+def canonicalize_property_syntax():
+    """Hyphenated canonical IDs cannot be used with JS dot-property syntax."""
+    for path in active_files():
+        if path.suffix not in CODE_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8")
+        text = re.sub(r'\?\.AUG-(\d{3,})\b', r'?.["AUG-\1"]', text)
+        text = re.sub(r'\.AUG-(\d{3,})\b', r'["AUG-\1"]', text)
+        text = re.sub(r'(?m)^(\s*)AUG-(\d{3,})(\s*:)', r'\1"AUG-\2"\3', text)
+        text = re.sub(r'([,{]\s*)AUG-(\d{3,})(\s*:)', r'\1"AUG-\2"\3', text)
+        path.write_text(text, encoding="utf-8")
 
 
 def write_legacy_map():
@@ -360,6 +373,7 @@ def main():
 
     migrate_catalog()
     normalize_simulation_boundary()
+    canonicalize_property_syntax()
     write_legacy_map()
     write_integrity_check()
     update_structure_workflow()
