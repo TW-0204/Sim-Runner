@@ -50,5 +50,8 @@ jobs:
             exit 1
           fi
 
+      - name: Verify augment runtime registry coverage
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-runtime-registry-check.ts
+
       - name: Run canonical smoke
         run: bash scripts/run-s16-p10-smoke.sh
