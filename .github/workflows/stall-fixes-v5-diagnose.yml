@@ -1,0 +1,35 @@
+name: Stall Fix V5 Diagnose
+
+on:
+  push:
+    branches: [experiment/s16]
+    paths:
+      - '.github/workflows/stall-fixes-v5-diagnose.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { player_count: 2, seed_start: 1300000 }
+          - { player_count: 3, seed_start: 1400000 }
+          - { player_count: 4, seed_start: 1500000 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - name: Apply current v3 plus stall fixes
+        run: bash scripts/apply-v3-stack.sh
+      - name: Diagnose remaining 3K range
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v5-diagnose.ts
+          --player-count ${{ matrix.player_count }}
+          --games 3000
+          --seed-start ${{ matrix.seed_start }}
