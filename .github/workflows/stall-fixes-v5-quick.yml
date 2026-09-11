@@ -1,4 +1,4 @@
-name: Stall Fix V6 Quick
+name: Stall Fix V7 Inspect
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
           node-version: 24.x
       - name: Apply current v3 plus stall fixes
         run: bash scripts/apply-v3-stack.sh
-      - name: Recheck known stall seeds
+      - name: Recheck fixed stall seeds
         run: |
           node --import ./scripts/register-ts-hooks.mjs --input-type=module <<'NODE'
           import { getBalanceRuleset } from './src/lib/simulation/rulesets.ts';
@@ -39,3 +39,5 @@ jobs:
             if (result.status === 'STALLED') throw new Error(`${item.label} seed ${item.seed} still stalled: ${result.error}`);
           }
           NODE
+      - name: Inspect remaining 4p stalls
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v7-inspect.ts
