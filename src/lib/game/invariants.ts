@@ -1,4 +1,5 @@
 import type { PlayerAugmentSetups } from "@/lib/augments/effects";
+import { augmentSetupProblems } from "@/lib/augments/setup";
 import type { GameEngineState, PieceState, TurnStage } from "./types";
 
 type InvariantContext = {
@@ -108,31 +109,8 @@ export function assertGameStateInvariants(
     invariantError("stage is FINISHED without a winner.", label);
   }
 
-  if (setupsByUser) {
-    for (const [userId, setups] of Object.entries(setupsByUser)) {
-      const player = engine.players.find((candidate) => candidate.userId === userId);
-      if (!player) invariantError(`setup container exists for missing player ${userId}.`, label);
-      for (const augmentId of ["G16", "P14"] as const) {
-        const pieceId = setups?.[augmentId]?.pieceId;
-        if (!pieceId) continue;
-        const piece = player.pieces.find((candidate) => candidate.id === pieceId);
-        if (!piece) invariantError(`${augmentId} setup for ${userId} references missing piece ${pieceId}.`, label);
-        if (augmentId === "P14" && piece.betrayalOriginalOwnerUserId != null) {
-          invariantError(`P14 setup for ${userId} references borrowed Betrayal piece ${pieceId}.`, label);
-        }
-      }
-    }
-  }
-
-  if (ownedByUser && setupsByUser) {
-    for (const player of engine.players) {
-      const owned = ownedByUser[player.userId] ?? [];
-      for (const augmentId of ["G16", "P14"] as const) {
-        if (!owned.includes(augmentId)) continue;
-        const pieceId = setupsByUser[player.userId]?.[augmentId]?.pieceId;
-        if (!pieceId) invariantError(`${player.userId} owns ${augmentId} without a valid setup piece.`, label);
-      }
-    }
+  for (const problem of augmentSetupProblems(engine, ownedByUser, setupsByUser)) {
+    invariantError(problem, label);
   }
 
   return true;
