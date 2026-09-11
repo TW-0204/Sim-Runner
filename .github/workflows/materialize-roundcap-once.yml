@@ -1,0 +1,30 @@
+name: materialize round cap once
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-v11
+          fetch-depth: 0
+      - name: Materialize round-cap support
+        run: python scripts/apply-simulation-round-cap.py
+      - name: Commit materialized support and remove migration workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/materialize-roundcap-once.yml
+          git rm -f .github/workflows/materialize-canonical-v11.yml
+          git rm -f .github/workflows/consolidate-canonical-v11.yml
+          git add src scripts
+          git commit -m "refactor: materialize canonical simulation round cap"
+          git push origin HEAD:refactor/canonical-v11
