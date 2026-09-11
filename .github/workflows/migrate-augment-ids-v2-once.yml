@@ -1,3 +1,4 @@
+# One-shot validated migration. Removed automatically after a successful run.
 name: Migrate Augment IDs V2 Once
 
 on:
