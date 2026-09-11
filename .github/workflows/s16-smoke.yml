@@ -1,4 +1,4 @@
-name: S16 Nak Smoke
+name: S16 + P10 Stack Smoke
 
 on:
   push:
@@ -18,5 +18,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run S16 smoke
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts --ruleset two-aug-start-r4-special-slots-v2 --games 300 --min-samples 20 --output-dir balance-results/s16-smoke --fail-on-incomplete
+      - name: Run current S16 + P10 stack smoke
+        run: bash scripts/run-s16-p10-smoke.sh
