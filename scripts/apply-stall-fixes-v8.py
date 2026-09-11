@@ -23,8 +23,8 @@ def replace_once(path: str, old: str, new: str) -> None:
 # lap against the actual representative owner instead.
 replace_once(
     "src/lib/game/engine.ts",
-    '''  const player = currentPlayer(engine);\n  engine.augmentRuntime ??= {};\n  const runtime = engine.augmentRuntime[player.userId] ?? {};\n''',
-    '''  const player = engine.players.find((candidate) => (\n    candidate.pieces.some((piece) => piece.id === representativeId)\n  ));\n  if (!player) return null;\n  engine.augmentRuntime ??= {};\n  const runtime = engine.augmentRuntime[player.userId] ?? {};\n''',
+    '''function resolveSoloLap(engine: GameEngineState, group: PieceState[], ownedIds: string[], setups: PlayerAugmentSetups) {\n  if (!ownedIds.includes("P14")) return null;\n  const representativeId = setups.P14?.pieceId;\n  if (!representativeId || !group.some((piece) => piece.id === representativeId)) return null;\n  const player = currentPlayer(engine);\n''',
+    '''function resolveSoloLap(engine: GameEngineState, group: PieceState[], ownedIds: string[], setups: PlayerAugmentSetups) {\n  if (!ownedIds.includes("P14")) return null;\n  const representativeId = setups.P14?.pieceId;\n  if (!representativeId || !group.some((piece) => piece.id === representativeId)) return null;\n  const player = engine.players.find((candidate) => (\n    candidate.pieces.some((piece) => piece.id === representativeId)\n  ));\n  if (!player) return null;\n''',
 )
 
 print("Applied stall fixes v8: solo laps resolve for the actual P14 representative owner.")
