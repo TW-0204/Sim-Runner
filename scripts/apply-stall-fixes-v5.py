@@ -25,6 +25,15 @@ replace_once(
     '''    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")\n    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))\n''',
 )
 
+# All offers for an augment event are built before immediate effects from earlier
+# players in the same event are resolved. Re-check A10 when the player actually
+# selects from the visible offers so an earlier A08/etc. cannot invalidate it.
+replace_once(
+    "src/lib/simulation/game.ts",
+    '''      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);\n''',
+    '''      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);\n      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));\n      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);\n''',
+)
+
 # Betrayal can transfer the source player's final unfinished piece. In that case the
 # source immediately satisfies the normal current-piece win condition and must not
 # be left in MOVING with no legal piece.
@@ -46,4 +55,4 @@ replace_once(
     '''      if (acquiredId === "A10") {\n        const betrayal = applyBetrayalTransfer(context.engine, offer.userId, context.rng.effect.next);\n        context.engine = betrayal.engine;\n        repairTransferredSetup(context, offer.userId, betrayal.transferredPieceId);\n        maybeDeclareBetrayalSourceWinner(context, offer.userId);\n      }\n''',
 )
 
-print("Applied stall fixes v5: A10 replacement eligibility and immediate source win resolution.")
+print("Applied stall fixes v5: A10 eligibility recheck and immediate source win resolution.")
