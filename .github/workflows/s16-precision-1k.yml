@@ -4,10 +4,10 @@ on:
   push:
     paths:
       - '.github/workflows/s16-precision-1k.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
       - 'scripts/s16-precision-run.ts'
-      - 'scripts/apply-v3-stack.sh'
-      - 'scripts/apply-s16-experiment.py'
-      - 'scripts/apply-p10-overpass.py'
   workflow_dispatch:
 
 permissions:
@@ -22,8 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Apply current rule stack
-        run: bash scripts/apply-v3-stack.sh
       - name: Run S16 forced-owner precision
         run: node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts --games 1000 --output-dir precision-results/s16
       - name: Upload S16 precision results
