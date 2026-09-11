@@ -1,16 +1,19 @@
 import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
 import {
   adjustedResultForGroup,
-  applyBetrayalTransfer,
   armA04OnAcquisition,
   canGrantFaceExtraRoll,
   queueA04BonusForNextBasic,
   isGroupUsableWithAugments,
-  replacesNormalWinCondition,
   type PlayerAugmentSetups,
 } from "@/lib/augments/effects";
 import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
 import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
+import {
+  applyBetrayalAcquisitionLifecycle,
+  initializeAcquiredPieceSetup,
+} from "@/lib/game/augment-lifecycle";
+import { assertGameStateInvariants } from "@/lib/game/invariants";
 import {
   markAthleteDisqualified,
   markAthleteMovement,
@@ -179,75 +182,8 @@ function upgradeOwnedList(existing: string[], selectedId: string) {
   return [...existing.filter((id) => AUGMENT_BY_ID.get(id)?.family !== selected.family), selectedId];
 }
 
-function rankedSetupPiece(pieces: PieceState[]) {
-  return [...pieces].sort((left, right) => {
-    const statusScore = (piece: PieceState) => piece.status === "FINISHED" ? 3 : piece.status === "ON_BOARD" ? 2 : piece.hasEntered ? 1 : 0;
-    const statusDelta = statusScore(right) - statusScore(left);
-    if (statusDelta !== 0) return statusDelta;
-    const historyDelta = right.pathHistory.length - left.pathHistory.length;
-    if (historyDelta !== 0) return historyDelta;
-    return left.id.localeCompare(right.id);
-  })[0];
-}
-
-function setupPieceId(player: GameEngineState["players"][number], augmentId?: string) {
-  const candidates = augmentId === "P14"
-    ? player.pieces.filter((piece) => piece.betrayalOriginalOwnerUserId == null)
-    : player.pieces;
-  return rankedSetupPiece(candidates)?.id;
-}
-
 function playerHasWaitingPiece(context: SimulationContext, userId: string) {
   return Boolean(context.engine.players.find((player) => player.userId === userId)?.pieces.some((piece) => piece.status === "WAITING"));
-}
-
-function repairTransferredSetup(context: SimulationContext, sourceUserId: string, transferredPieceId: string) {
-  const setups = context.setupsByUser[sourceUserId];
-  if (!setups) return;
-  const source = context.engine.players.find((player) => player.userId === sourceUserId);
-  for (const augmentId of ["G16", "P14"] as const) {
-    if (setups[augmentId]?.pieceId !== transferredPieceId) continue;
-
-    if (augmentId === "P14") {
-      const nativePieces = source?.pieces.filter((piece) => piece.betrayalOriginalOwnerUserId == null) ?? [];
-      const nonFinished = nativePieces.filter((piece) => piece.status !== "FINISHED");
-      const replacement = rankedSetupPiece(nonFinished.length > 0 ? nonFinished : nativePieces);
-      if (!replacement) {
-        delete setups[augmentId];
-        continue;
-      }
-      if (replacement.status === "FINISHED") {
-        replacement.status = "WAITING";
-        replacement.node = null;
-        replacement.groupId = replacement.id;
-      }
-      setups[augmentId] = { pieceId: replacement.id };
-      continue;
-    }
-
-    const replacementId = source?.pieces[0]?.id;
-    if (replacementId) setups[augmentId] = { pieceId: replacementId };
-    else delete setups[augmentId];
-  }
-}
-
-function maybeDeclareBetrayalSourceWinner(context: SimulationContext, userId: string) {
-  const ownedIds = context.ownedByUser[userId] ?? [];
-  if (ownedIds.includes("P02") || replacesNormalWinCondition(ownedIds)) return;
-  const player = context.engine.players.find((candidate) => candidate.userId === userId);
-  if (!player || !player.pieces.every((piece) => piece.status === "FINISHED")) return;
-
-  context.engine.winnerUserId = userId;
-  context.engine.winnerCondition = "NORMAL";
-  context.engine.stage = "FINISHED";
-  context.engine.pendingRolls = [];
-  context.engine.results = [];
-  context.engine.pendingRollChoice = null;
-  context.engine.pendingSplitChoice = null;
-  context.engine.pendingCaptureChoice = null;
-  context.engine.pendingRelocationChoice = null;
-  context.engine.pendingStackChoice = null;
-  context.engine.lastAction = `${player.displayName}: 배반 후 남은 현재 말이 모두 완주되어 승리!`;
 }
 
 function upgradedAugmentTier(tier: AugmentTier): AugmentTier {
@@ -330,6 +266,11 @@ function commitTransition(
     }
   }
   context.engine = applyPassiveSpecialWinner(after, context.ownedByUser);
+  assertGameStateInvariants(context.engine, {
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    label: `${actionKind}@${context.actions}`,
+  });
 }
 
 function applyDueAugmentEvents(context: SimulationContext) {
@@ -456,17 +397,22 @@ function applyDueAugmentEvents(context: SimulationContext) {
         }
       }
       if (acquiredId === "A10") {
-        const betrayal = applyBetrayalTransfer(context.engine, offer.userId, context.rng.effect.next);
+        const betrayal = applyBetrayalAcquisitionLifecycle(
+          context.engine,
+          offer.userId,
+          context.ownedByUser,
+          context.setupsByUser,
+          context.rng.effect.next,
+        );
         context.engine = betrayal.engine;
-        repairTransferredSetup(context, offer.userId, betrayal.transferredPieceId);
-        maybeDeclareBetrayalSourceWinner(context, offer.userId);
       }
       if (acquiredId === "G16" || acquiredId === "P14") {
-        const pieceId = setupPieceId(player, acquiredId);
-        if (pieceId) {
-          context.setupsByUser[offer.userId] ??= {};
-          context.setupsByUser[offer.userId][acquiredId] = { pieceId };
-        }
+        initializeAcquiredPieceSetup(
+          context.engine,
+          offer.userId,
+          acquiredId,
+          context.setupsByUser,
+        );
       }
 
       context.acquisitions.push({
@@ -489,6 +435,11 @@ function applyDueAugmentEvents(context: SimulationContext) {
           tier: AUGMENT_BY_ID.get(acquiredId)?.tier ?? tier,
         });
       }
+      assertGameStateInvariants(context.engine, {
+        ownedByUser: context.ownedByUser,
+        setupsByUser: context.setupsByUser,
+        label: `acquire:${acquiredId}:${offer.userId}`,
+      });
     }
 
     if (eventIndex === 0 && context.firstAugmentAppliedRound == null) {
