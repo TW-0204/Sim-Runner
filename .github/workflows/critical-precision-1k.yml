@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - experiment/s16
-      - refactor/canonical-v11
     paths:
       - '.github/workflows/critical-precision-1k.yml'
       - 'src/lib/augments/**'
