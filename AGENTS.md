@@ -8,28 +8,34 @@ Do not apply legacy patch scripts before running tests or simulations. Historica
 
 ## Augment runtime architecture
 
-Every active augment in `src/lib/augments/catalog.ts` must have a matching entry in `src/lib/augments/runtime-registry.ts`.
+Every active augment in `src/lib/augments/catalog.ts` must have a matching runtime registration.
 
 For new augments:
 1. Add the player-visible metadata to `catalog.ts`.
-2. Register the augment in `runtime-registry.ts` as `implementation: "hooked"`.
-3. Implement behavior through the registry lifecycle hooks instead of adding simulator-only branches.
-4. If the augment keeps a reference to a piece, group, roll result, or other mutable game entity, declare that reference policy in the registry and make ownership/removal repair part of the shared lifecycle.
-5. Add exact regression coverage for any newly introduced state transition or interaction edge case.
-6. Run the runtime-registry check, canonical smoke, and historical regression suite before balance precision tests.
+2. Create `src/lib/augments/runtime/<ID>.ts` exporting an `implementation: "hooked"` runtime registration.
+3. Add that module to `HOOKED_AUGMENT_RUNTIMES` in `src/lib/augments/runtime/index.ts`.
+4. Implement behavior through the shared lifecycle hooks instead of adding simulator-only branches.
+5. If the augment keeps a reference to a piece, group, roll result, player, map entity, or other mutable game entity, declare a setup/reference policy and repair/validation behavior in the runtime registration.
+6. Add exact regression coverage for newly introduced state transitions or interaction edge cases.
+7. Run the runtime-registry check, canonical smoke, and historical regression suite before balance precision tests.
 
-Existing augments may remain `implementation: "legacy"` while they are migrated incrementally. Do not add a new augment to the legacy baseline merely to bypass registry hooks.
+Existing augments may remain `implementation: "legacy"` while they are migrated incrementally. The legacy allowlist is frozen: do not add a new augment to it merely to bypass runtime hooks.
 
 Canonical lifecycle ownership:
+- runtime contract/dispatchers: `src/lib/augments/runtime-registry.ts`
+- new/migrated augment modules: `src/lib/augments/runtime/<ID>.ts`
 - acquisition side effects: `src/lib/game/augment-lifecycle.ts`
-- player action execution and common post-action rules: `src/lib/game/action-lifecycle.ts`
+- roll execution: `src/lib/game/roll-lifecycle.ts`
+- player action execution: `src/lib/game/action-lifecycle.ts`
+- cross-cutting transition events: `src/lib/game/transition-lifecycle.ts`
 - automatic turn rules: `src/lib/game/turn-lifecycle.ts`
 - mutable augment reference setup/repair: `src/lib/augments/setup.ts`
-- augment extension registration: `src/lib/augments/runtime-registry.ts`
 - low-level movement/capture primitives: `src/lib/game/engine.ts`
 - bot choice/scoring only: `src/lib/simulation/game.ts`
 
 Do not put canonical game-rule mutations in `src/lib/simulation/game.ts`. Simulation may choose among legal actions and record telemetry, but actual state transitions belong to the game layer.
+
+A normal new augment must not require edits to `simulation/game.ts`, unrelated augment modules, legacy patch scripts, or ownership-changing effects such as A10 merely because it stores a reference. If it appears to require those edits, first add or extend a reusable lifecycle/reference contract in the game layer.
 
 ## Visual manifest synchronization
 
