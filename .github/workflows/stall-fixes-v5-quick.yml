@@ -21,15 +21,21 @@ jobs:
           node-version: 24.x
       - name: Apply current v3 plus stall fixes
         run: bash scripts/apply-v3-stack.sh
-      - name: Recheck known A10 terminal seeds
+      - name: Recheck known stall seeds
         run: |
           node --import ./scripts/register-ts-hooks.mjs --input-type=module <<'NODE'
           import { getBalanceRuleset } from './src/lib/simulation/rulesets.ts';
           import { simulateGame } from './src/lib/simulation/game.ts';
           const ruleset = getBalanceRuleset('two-aug-start-r4-special-slots-v2');
-          for (const seed of ['1301484', '1301794']) {
-            const result = simulateGame({ seed, ruleset, playerCount: 2, maxActions: 20000 });
-            console.log(JSON.stringify({ seed, status: result.status, winnerUserId: result.winnerUserId, winnerCondition: result.winnerCondition, error: result.error }));
-            if (result.status === 'STALLED') throw new Error(`seed ${seed} still stalled: ${result.error}`);
+          const cases = [
+            { seed: '1301484', playerCount: 2, label: 'A10-terminal-1' },
+            { seed: '1301794', playerCount: 2, label: 'A10-terminal-2' },
+            { seed: '1402130', playerCount: 3, label: 'A05-to-A10-no-waiting' },
+            { seed: '1400473', playerCount: 3, label: 'P14-A13-wormhole-lap' },
+          ];
+          for (const item of cases) {
+            const result = simulateGame({ seed: item.seed, ruleset, playerCount: item.playerCount, maxActions: 20000 });
+            console.log(JSON.stringify({ ...item, status: result.status, winnerUserId: result.winnerUserId, winnerCondition: result.winnerCondition, error: result.error }));
+            if (result.status === 'STALLED') throw new Error(`${item.label} seed ${item.seed} still stalled: ${result.error}`);
           }
           NODE
