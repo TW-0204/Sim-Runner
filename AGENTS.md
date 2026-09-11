@@ -12,7 +12,7 @@ Every active augment in `src/lib/augments/catalog.ts` must have a matching runti
 
 For new augments:
 1. Add the player-visible metadata to `catalog.ts`.
-2. Create `src/lib/augments/runtime/<ID>.ts` exporting an `implementation: "hooked"` runtime registration.
+2. Create `src/lib/augments/runtime/<AUG-###>.ts` exporting an `implementation: "hooked"` runtime registration.
 3. Add that module to `HOOKED_AUGMENT_RUNTIMES` in `src/lib/augments/runtime/index.ts`.
 4. Implement behavior through the shared lifecycle hooks instead of adding simulator-only branches.
 5. If the augment keeps a reference to a piece, group, roll result, player, map entity, or other mutable game entity, declare a setup/reference policy and repair/validation behavior in the runtime registration.
@@ -35,7 +35,7 @@ Canonical lifecycle ownership:
 
 Do not put canonical game-rule mutations in `src/lib/simulation/game.ts`. Simulation may choose among legal actions and record telemetry, but actual state transitions belong to the game layer.
 
-A normal new augment must not require edits to `simulation/game.ts`, unrelated augment modules, legacy patch scripts, or ownership-changing effects such as A10 merely because it stores a reference. If it appears to require those edits, first add or extend a reusable lifecycle/reference contract in the game layer.
+A normal new augment must not require edits to `simulation/game.ts`, unrelated augment modules, legacy patch scripts, or ownership-changing effects such as AUG-053 merely because it stores a reference. If it appears to require those edits, first add or extend a reusable lifecycle/reference contract in the game layer.
 
 ## Visual manifest synchronization
 
@@ -65,3 +65,19 @@ For augment visuals:
 2. Do not infer current rules from raw `catalog.ts` alone.
 3. Do not generate assets for IDs listed as removed/inactive unless the rules explicitly reactivate them.
 4. Visualize the mechanic rather than the literal Korean augment name.
+
+## Augment identity lifecycle
+
+Canonical augment IDs are permanent `AUG-###` identifiers and never encode tier, mechanic family, or balance state. Tier is mutable metadata.
+
+- Never reuse a canonical ID, even after an augment is removed.
+- Rename, tier changes, numeric tuning, and normal balance edits keep the same canonical ID.
+- Removed augments stay in `AUGMENT_CATALOG` with `status: "retired"`; they are excluded from `AUGMENTS`, the active pool.
+- A merger creates a new canonical ID. Retire source IDs and use `replacedBy` only as lineage metadata.
+- A split retires the source ID and creates new canonical IDs for each result.
+- `legacyAliases` are identity aliases only for the one-time S/G/P/A -> AUG migration, never for reworks or mergers.
+- Historical files under `archive/` may keep old IDs. Active code must use canonical IDs.
+- After this migration the next unused canonical ID is `AUG-068`.
+- Never derive seeded gameplay randomness directly from mutable identity presentation. Use the catalog randomization key so an ID migration cannot change deterministic outcomes.
+
+See `docs/augment-id-lifecycle.md`.

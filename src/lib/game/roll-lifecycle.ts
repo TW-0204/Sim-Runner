@@ -12,7 +12,7 @@ export type RollLifecycleInput = {
   randomRoll: () => number;
   randomEffect: () => number;
   nextTokenId: (label: string) => string;
-  /** Active player policy chooses whether to spend P19 and which face to request. */
+  /** Active player policy chooses whether to spend AUG-044 and which face to request. */
   godHandFace?: RollFace | null;
 };
 
@@ -36,7 +36,7 @@ function withSeededMathRandom<T>(random: () => number, callback: () => T): T {
 /**
  * Canonical execution boundary for a pending roll.
  *
- * The caller may choose optional active decisions (currently P19 God Hand), but all
+ * The caller may choose optional active decisions (currently AUG-044 God Hand), but all
  * automatic roll rules and before/after roll hooks are owned by the game layer.
  */
 export function executeRollLifecycle({
@@ -132,7 +132,7 @@ export type DoRerollLifecycleInput = {
   nextTokenId: (label: string) => string;
 };
 
-/** S12's actual rethrow uses the same roll hook boundary as a normal roll. */
+/** AUG-012's actual rethrow uses the same roll hook boundary as a normal roll. */
 export function executeDoRerollLifecycle({
   context,
   engine: engineInput,

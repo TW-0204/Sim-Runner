@@ -24,7 +24,7 @@ function fresh() {
   enemy.status = "ON_BOARD"; enemy.node = 10; enemy.hasEntered = true;
 
   // Always pick the first internal node, intentionally making opponents coexist at node 11.
-  const next = applyGravityExplosion(engine, "p1", { p1: ["A01"], p2: [] }, () => 0);
+  const next = applyGravityExplosion(engine, "p1", { p1: ["AUG-045"], p2: [] }, () => 0);
   const na = next.players[0].pieces.find((piece) => piece.id === a.id)!;
   const nb = next.players[0].pieces.find((piece) => piece.id === b.id)!;
   const nw = next.players[0].pieces.find((piece) => piece.id === waiting.id)!;
@@ -42,7 +42,7 @@ function fresh() {
   assert.equal(next.augmentRuntime?.p1?.gravityExplosionResolved, true);
 }
 
-// 2) P10 outer-route-only pieces are exempt from gravity explosion.
+// 2) AUG-037 outer-route-only pieces are exempt from gravity explosion.
 {
   const engine = fresh();
   const p1 = engine.players[0];
@@ -51,9 +51,9 @@ function fresh() {
   const exempt = p2.pieces[0];
   mover.status = "ON_BOARD"; mover.node = 4; mover.hasEntered = true;
   exempt.status = "ON_BOARD"; exempt.node = 22; exempt.hasEntered = true;
-  const next = applyGravityExplosion(engine, "p1", { p1: ["A01"], p2: ["P10"] }, () => 0.5);
+  const next = applyGravityExplosion(engine, "p1", { p1: ["AUG-045"], p2: ["AUG-037"] }, () => 0.5);
   assert.ok(INTERNAL.has(next.players[0].pieces[0].node!));
   assert.equal(next.players[1].pieces[0].node, 22);
 }
 
-console.log("[batch8-probe] PASS: A01 Gravity Explosion mechanics validated.");
+console.log("[batch8-probe] PASS: AUG-045 Gravity Explosion mechanics validated.");

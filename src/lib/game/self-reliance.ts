@@ -49,7 +49,7 @@ export function maybePauseSelfRelianceAfterMovement(
   actorUserId: string,
   ownedIds: string[],
 ) {
-  if (!ownedIds.includes("G14") || after.stage === "SPLIT_CHOICE") return after;
+  if (!ownedIds.includes("AUG-061") || after.stage === "SPLIT_CHOICE") return after;
   const actor = before.players.find((player) => player.userId === actorUserId);
   const moved = candidateMovedGroup(before, after, actorUserId);
   if (!actor || !moved) return after;
@@ -132,7 +132,7 @@ export function applySelfRelianceSplit(
   partition: string[][] | null,
   ownedIds: string[],
 ) {
-  if (!ownedIds.includes("G14")) throw new Error("각자도생 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-061")) throw new Error("각자도생 증강을 보유하고 있지 않습니다.");
   if (engineInput.stage !== "SPLIT_CHOICE" || !engineInput.pendingSplitChoice) {
     throw new Error("지금은 묶음을 나눌 수 없습니다.");
   }

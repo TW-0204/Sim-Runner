@@ -6,7 +6,7 @@ import {
 } from "../src/lib/game/engine";
 import type { GameEngineState, RollToken } from "../src/lib/game/types";
 
-const OWNED = ["A16"];
+const OWNED = ["AUG-059"];
 const OWNED_BY_USER = { p1: OWNED, p2: [] as string[] };
 
 function engine() {
@@ -122,4 +122,4 @@ function token(id: string, face: RollToken["face"], steps: number): RollToken {
   );
 }
 
-console.log("[batch6-probe] PASS: A16 Margin mechanics validated.");
+console.log("[batch6-probe] PASS: AUG-059 Margin mechanics validated.");

@@ -23,9 +23,9 @@ const stored: RollToken = { id: "tomorrow:p1:1", face: "GAE", baseSteps: 2, fina
 engine.results = [stored];
 
 assert.throws(
-  () => applyWormholeTurn(engine, "p1", last.groupId, ["A13", "G13"]),
+  () => applyWormholeTurn(engine, "p1", last.groupId, ["AUG-056", "AUG-028"]),
   /남아 있는 이동 결과를 사용할 말이 없어/,
-  "A13 must not allow the only movable group to enter while an existing result would be stranded",
+  "AUG-056 must not allow the only movable group to enter while an existing result would be stranded",
 );
 
-console.log("[batch8-regression] PASS: A13/G13 stranded-result deadlock is blocked.");
+console.log("[batch8-regression] PASS: AUG-056/AUG-028 stranded-result deadlock is blocked.");

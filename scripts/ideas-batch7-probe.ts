@@ -16,7 +16,7 @@ function movement(engine: ReturnType<typeof fresh>, face: RollToken["face"], ste
   engine.results = [{ id: `r:${face}`, face, baseSteps: steps, finalSteps: steps, source: "BASIC" }];
 }
 
-// 1) A14 owner infects instead of capturing and coexists at the destination.
+// 1) AUG-057 owner infects instead of capturing and coexists at the destination.
 {
   const engine = fresh();
   const p1 = engine.players[0];
@@ -26,7 +26,7 @@ function movement(engine: ReturnType<typeof fresh>, face: RollToken["face"], ste
   attacker.status = "ON_BOARD"; attacker.node = 4; attacker.hasEntered = true;
   victim.status = "ON_BOARD"; victim.node = 5; victim.hasEntered = true;
   movement(engine, "DO", 1);
-  const next = applyMove(engine, { groupId: attacker.groupId, resultId: "r:DO", forwardPath: [5] }, ["A14"], {}, { p1: ["A14"], p2: [] });
+  const next = applyMove(engine, { groupId: attacker.groupId, resultId: "r:DO", forwardPath: [5] }, ["AUG-057"], {}, { p1: ["AUG-057"], p2: [] });
   const nextAttacker = next.players[0].pieces.find((piece) => piece.id === attacker.id)!;
   const nextVictim = next.players[1].pieces.find((piece) => piece.id === victim.id)!;
   assert.equal(nextAttacker.status, "ON_BOARD");
@@ -97,4 +97,4 @@ for (const [face, steps] of [["DO", 1], ["GAE", 2]] as const) {
   assert.equal(adjustedResultForGroup(engine, "p1", piece.groupId, backdo, []).finalSteps, -1);
 }
 
-console.log("[batch7-probe] PASS: A14 Plague mechanics validated.");
+console.log("[batch7-probe] PASS: AUG-057 Plague mechanics validated.");

@@ -21,7 +21,7 @@ function fresh(count: 2 | 3 | 4) {
   p2.pieces[3].status = "FINISHED"; p2.pieces[3].node = null; p2.pieces[3].hasEntered = true;
   engine.augmentRuntime = { p1: { enemyCaptureCount: 5 } };
 
-  const result = applyBombExplosion(engine, ["p1"], { p1: ["A07", "P16"], p2: [] });
+  const result = applyBombExplosion(engine, ["p1"], { p1: ["AUG-050", "AUG-042"], p2: [] });
   assert.equal(result.caughtGroupsByUser.p1, 2);
   assert.equal(result.bonusRollsByUser.p1, 2);
   assert.equal(result.engine.augmentRuntime?.p1?.bombBonusRollsPending, 2);
@@ -39,7 +39,7 @@ function fresh(count: 2 | 3 | 4) {
   p2.pieces[0].status = "WORMHOLE"; p2.pieces[0].node = null; p2.pieces[0].hasEntered = true;
   p2.pieces[1].status = "MARGIN"; p2.pieces[1].node = null; p2.pieces[1].hasEntered = true;
   p2.pieces[2].status = "WAITING"; p2.pieces[2].node = null;
-  const result = applyBombExplosion(engine, ["p1"], { p1: ["A07"], p2: [] });
+  const result = applyBombExplosion(engine, ["p1"], { p1: ["AUG-050"], p2: [] });
   assert.equal(result.caughtGroupsByUser.p1, 0);
   assert.equal(result.engine.players[1].pieces[0].status, "WORMHOLE");
   assert.equal(result.engine.players[1].pieces[1].status, "MARGIN");
@@ -54,7 +54,7 @@ function fresh(count: 2 | 3 | 4) {
   p2.pieces[0].status = "ON_BOARD"; p2.pieces[0].node = 2; p2.pieces[0].hasEntered = true;
   p2.pieces[1].status = "ON_BOARD"; p2.pieces[1].node = 3; p2.pieces[1].hasEntered = true;
   p3.pieces[0].status = "ON_BOARD"; p3.pieces[0].node = 4; p3.pieces[0].hasEntered = true;
-  const result = applyBombExplosion(engine, ["p1", "p2"], { p1: ["A07"], p2: ["A07"], p3: [] });
+  const result = applyBombExplosion(engine, ["p1", "p2"], { p1: ["AUG-050"], p2: ["AUG-050"], p3: [] });
   assert.equal(result.caughtGroupsByUser.p1, 3);
   assert.equal(result.caughtGroupsByUser.p2, 2);
   assert.equal(result.bonusRollsByUser.p1, 1, "3p awards one roll per two caught groups");
@@ -71,9 +71,9 @@ function fresh(count: 2 | 3 | 4) {
     player.pieces[0].node = player.seat;
     player.pieces[0].hasEntered = true;
   }
-  const result = applyBombExplosion(engine, ["p1"], { p1: ["A07"], p2: [], p3: [], p4: [] });
+  const result = applyBombExplosion(engine, ["p1"], { p1: ["AUG-050"], p2: [], p3: [], p4: [] });
   assert.equal(result.caughtGroupsByUser.p1, 3);
   assert.equal(result.bonusRollsByUser.p1, 1);
 }
 
-console.log("[batch9-probe] PASS: A07 Bomb mechanics validated.");
+console.log("[batch9-probe] PASS: AUG-050 Bomb mechanics validated.");

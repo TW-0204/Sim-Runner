@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AUGMENTS, AUGMENT_BY_ID, type AugmentDefinition, type AugmentTier } from "./catalog";
+import { AUGMENTS, AUGMENT_BY_ID, augmentRandomizationKey, type AugmentDefinition, type AugmentTier } from "./catalog";
 
 const TIER_SEQUENCES: Array<{ tiers: [AugmentTier, AugmentTier, AugmentTier]; weight: number }> = [
   { tiers: ["gold", "gold", "gold"], weight: 22 },
@@ -24,23 +24,23 @@ const TIER_SEQUENCES: Array<{ tiers: [AugmentTier, AugmentTier, AugmentTier]; we
 
 type PlayerSeed = { userId: string; seat: number };
 
-export const SPECIAL_AUGMENT_IDS = new Set(["P02", "P03", "P04", "P14", "P16"]);
+export const SPECIAL_AUGMENT_IDS = new Set(["AUG-031", "AUG-032", "AUG-033", "AUG-041", "AUG-042"]);
 export const QUEST_SPECIAL_MAX_GAME_EXPOSURE = 0.10;
 export const MOONWALK_SPECIAL_MAX_GAME_EXPOSURE = 0.025;
 
 const SOLO_RUNNER_ZERO_EFFECT = new Set([
-  "S02",
-  "S05",
-  "S08",
-  "S15",
-  "G07",
-  "G08",
-  "G09",
-  "G11",
-  "G14",
-  "P11",
-  "P15",
-  "P18",
+  "AUG-002",
+  "AUG-005",
+  "AUG-008",
+  "AUG-015",
+  "AUG-022",
+  "AUG-023",
+  "AUG-024",
+  "AUG-026",
+  "AUG-061",
+  "AUG-038",
+  "AUG-065",
+  "AUG-066",
 ]);
 
 export function deterministicInt(key: string, modulo: number) {
@@ -81,8 +81,8 @@ export function pickTierSequence(seed: string): [AugmentTier, AugmentTier, Augme
 }
 
 function isStructurallyImpossible(augment: AugmentDefinition, ownedIds: string[]) {
-  if (augment.id === "S08" && ownedIds.some((id) => SPECIAL_AUGMENT_IDS.has(id))) return true;
-  if (ownedIds.includes("P14") && SOLO_RUNNER_ZERO_EFFECT.has(augment.id)) return true;
+  if (augment.id === "AUG-008" && ownedIds.some((id) => SPECIAL_AUGMENT_IDS.has(id))) return true;
+  if (ownedIds.includes("AUG-041") && SOLO_RUNNER_ZERO_EFFECT.has(augment.id)) return true;
   return false;
 }
 
@@ -108,8 +108,8 @@ export function canOffer(augment: AugmentDefinition, phase: number, ownedIds: st
 
 function deterministicCandidate(candidates: AugmentDefinition[], key: string) {
   return [...candidates].sort((a, b) => {
-    const aHash = createHash("sha256").update(`${key}:${a.id}`).digest("hex");
-    const bHash = createHash("sha256").update(`${key}:${b.id}`).digest("hex");
+    const aHash = createHash("sha256").update(`${key}:${augmentRandomizationKey(a.id)}`).digest("hex");
+    const bHash = createHash("sha256").update(`${key}:${augmentRandomizationKey(b.id)}`).digest("hex");
     return aHash.localeCompare(bHash);
   })[0] ?? null;
 }
@@ -129,10 +129,10 @@ export function buildSpecialOfferCandidateIds(args: {
     .filter((augment) => canOffer(augment, args.phase, ownedIds))
     .sort((a, b) => {
       const aHash = createHash("sha256")
-        .update(`${args.seed}:special:${args.phase}:${args.userId}:${a.id}`)
+        .update(`${args.seed}:special:${args.phase}:${args.userId}:${augmentRandomizationKey(a.id)}`)
         .digest("hex");
       const bHash = createHash("sha256")
-        .update(`${args.seed}:special:${args.phase}:${args.userId}:${b.id}`)
+        .update(`${args.seed}:special:${args.phase}:${args.userId}:${augmentRandomizationKey(b.id)}`)
         .digest("hex");
       return aHash.localeCompare(bHash);
     })
@@ -257,10 +257,10 @@ export function buildPhaseOffers(args: {
       .filter((augment) => !augment.uniquePerGame || !reservedUnique.has(augment.id))
       .sort((a, b) => {
         const aHash = createHash("sha256")
-          .update(`${args.seed}:${args.phase}:${player.userId}:${a.id}`)
+          .update(`${args.seed}:${args.phase}:${player.userId}:${augmentRandomizationKey(a.id)}`)
           .digest("hex");
         const bHash = createHash("sha256")
-          .update(`${args.seed}:${args.phase}:${player.userId}:${b.id}`)
+          .update(`${args.seed}:${args.phase}:${player.userId}:${augmentRandomizationKey(b.id)}`)
           .digest("hex");
         return aHash.localeCompare(bHash);
       });

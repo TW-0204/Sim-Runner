@@ -18,7 +18,7 @@ export type FirstAugmentLeaderCheckpoint = {
 };
 
 const STANDARD_ROUTE_STEPS = 21;
-const SPECIAL_FIRST_AUGMENTS = new Set(["P03", "P04", "P14", "P16"]);
+const SPECIAL_FIRST_AUGMENTS = new Set(["AUG-032", "AUG-033", "AUG-041", "AUG-042"]);
 
 function resultIdsStillAvailable(engine: GameEngineState) {
   const ids = new Set(engine.results.map((result) => result.id));
@@ -40,7 +40,7 @@ export function detectG01TriggerBreakdown(
   ownedByUser: Record<string, string[]>,
 ): G01TriggerBreakdown {
   const breakdown: G01TriggerBreakdown = { gaeExtraRolls: 0, yutMoSuppressions: 0 };
-  if (!(ownedByUser[actorUserId] ?? []).includes("G01")) return breakdown;
+  if (!(ownedByUser[actorUserId] ?? []).includes("AUG-017")) return breakdown;
 
   for (const token of newlyResolvedResults(before, after)) {
     if (token.face === "GAE") breakdown.gaeExtraRolls += 1;

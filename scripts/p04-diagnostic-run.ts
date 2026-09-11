@@ -18,7 +18,7 @@ const gamePath = join(process.cwd(), "src/lib/simulation/game.ts");
 const original = readFileSync(gamePath, "utf-8");
 
 const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const selectedId = eventIndex === 0 && player.seat === forcedSeat ? \"P04\" : context.rng.augment.pick(visible);`;
+const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const selectedId = eventIndex === 0 && player.seat === forcedSeat ? \"AUG-033\" : context.rng.augment.pick(visible);`;
 
 const returnNeedle = `    failureDiagnostics: status === "STALLED" ? {\n      engine: structuredClone(context.engine),\n      ownedByUser: structuredClone(context.ownedByUser),\n      setupsByUser: structuredClone(context.setupsByUser),\n    } : undefined,\n    error,`;
 const returnReplacement = `    failureDiagnostics: status === "STALLED" ? {\n      engine: structuredClone(context.engine),\n      ownedByUser: structuredClone(context.ownedByUser),\n      setupsByUser: structuredClone(context.setupsByUser),\n    } : undefined,\n    __p04FinalPlayers: structuredClone(context.engine.players),\n    error,`;
@@ -60,8 +60,8 @@ try {
       attempts += 1;
       const forcedSeat = seed % playerCount + 1;
       const forcedUserId = `sim-p${forcedSeat}`;
-      const forced = game.acquisitions.some((a: any) => a.userId === forcedUserId && a.augmentId === "P04" && a.acquisitionIndex === 1);
-      const duplicate = game.acquisitions.some((a: any) => a.userId !== forcedUserId && a.augmentId === "P04");
+      const forced = game.acquisitions.some((a: any) => a.userId === forcedUserId && a.augmentId === "AUG-033" && a.acquisitionIndex === 1);
+      const duplicate = game.acquisitions.some((a: any) => a.userId !== forcedUserId && a.augmentId === "AUG-033");
       if (!forced || duplicate) continue;
 
       valid += 1;
@@ -76,7 +76,7 @@ try {
 
       losses += 1;
       const player = game.__p04FinalPlayers.find((p: any) => p.userId === forcedUserId);
-      if (!player) throw new Error("Missing forced P04 player in final snapshot.");
+      if (!player) throw new Error("Missing forced AUG-033 player in final snapshot.");
       const pieces = player.pieces as any[];
       const centerPieces = pieces.filter((p) => p.status === "ON_BOARD" && p.node === CENTER);
       const groupCounts = new Map<string, number>();
@@ -113,9 +113,9 @@ try {
   writeFileSync(gamePath, original, "utf-8");
 }
 
-console.log("# P04 Bottleneck Diagnostic\n");
-console.log(`- ${games.toLocaleString()} valid forced-P04 games per player count`);
-console.log("- distributions below describe only games where the P04 owner lost\n");
+console.log("# AUG-033 Bottleneck Diagnostic\n");
+console.log(`- ${games.toLocaleString()} valid forced-AUG-033 games per player count`);
+console.log("- distributions below describe only games where the AUG-033 owner lost\n");
 console.log("| Players | Owner win | Loss center 0/1/2/3 | Largest center group 0/1/2/3 | Avg approach | Avg corner | Avg waiting | Avg onboard | Center-history pieces | Incomplete |");
 console.log("|---:|---:|---|---|---:|---:|---:|---:|---:|---:|");
 for (const r of results) {

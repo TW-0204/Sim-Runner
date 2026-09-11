@@ -5,10 +5,10 @@ import { simulateGame } from "@/lib/simulation/game";
 
 const ruleset = getBalanceRuleset("two-aug-start-r4-special-slots-v2");
 const cases = [
-  { seed: "1500013", playerCount: 4, label: "P14-A08" },
-  { seed: "1500032", playerCount: 4, label: "A15-lock" },
-  { seed: "1500206", playerCount: 4, label: "A16-A02" },
-  { seed: "1501995", playerCount: 4, label: "A13-G13-backdo" },
+  { seed: "1500013", playerCount: 4, label: "AUG-041-AUG-051" },
+  { seed: "1500032", playerCount: 4, label: "AUG-058-lock" },
+  { seed: "1500206", playerCount: 4, label: "AUG-059-AUG-046" },
+  { seed: "1501995", playerCount: 4, label: "AUG-056-AUG-028-backdo" },
 ] as const;
 
 for (const item of cases) {

@@ -11,7 +11,7 @@ node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v10-probe.ts
 node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v11-probe.ts
 
 if grep -q '친구와 함께' src/lib/game/engine.ts; then
-  echo "S15 naming cleanup failed: old runtime log label remains in engine.ts" >&2
+  echo "AUG-015 naming cleanup failed: old runtime log label remains in engine.ts" >&2
   exit 1
 fi
 
@@ -20,4 +20,4 @@ node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts \
   --games "$S16_SMOKE_GAMES" \
   --output-dir "$OUTPUT_DIR"
 
-echo "Canonical v11 S16 + P10 smoke PASS"
+echo "Canonical v11 AUG-016 + AUG-037 smoke PASS"

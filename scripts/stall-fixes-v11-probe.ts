@@ -1,9 +1,9 @@
 const cases = [
-  { augmentId: "P14", seed: "6226875", playerCount: 2 },
-  { augmentId: "P14", seed: "6227070", playerCount: 2 },
-  { augmentId: "P14", seed: "6326327", playerCount: 3 },
-  { augmentId: "P14", seed: "6326906", playerCount: 3 },
-  { augmentId: "A16", seed: "6384749", playerCount: 2, expectedWinnerSeat: 2, expectedWinnerCondition: "MOONWALK" },
+  { augmentId: "AUG-041", seed: "6226875", playerCount: 2 },
+  { augmentId: "AUG-041", seed: "6227070", playerCount: 2 },
+  { augmentId: "AUG-041", seed: "6326327", playerCount: 3 },
+  { augmentId: "AUG-041", seed: "6326906", playerCount: 3 },
+  { augmentId: "AUG-059", seed: "6384749", playerCount: 2, expectedWinnerSeat: 2, expectedWinnerCondition: "MOONWALK" },
 ] as const;
 
 const [{ getBalanceRuleset }, { simulateGame }, { createInitialEngine }, { isMoonwalkHome }] = await Promise.all([
@@ -27,10 +27,10 @@ borrowed.seat = p2.seat;
 borrowed.betrayalOriginalOwnerUserId = p1.userId;
 p2.pieces.push(borrowed);
 if (!isMoonwalkHome(semanticEngine, p2.userId)) {
-  throw new Error("P02 semantic probe failed: borrowed Betrayal piece blocked the owner's four WAITING pieces.");
+  throw new Error("AUG-031 semantic probe failed: borrowed Betrayal piece blocked the owner's four WAITING pieces.");
 }
 if (isMoonwalkHome(semanticEngine, p1.userId)) {
-  throw new Error("P02 semantic probe failed: an original piece still under opponent control counted as home.");
+  throw new Error("AUG-031 semantic probe failed: an original piece still under opponent control counted as home.");
 }
 
 for (const item of cases) {

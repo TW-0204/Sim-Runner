@@ -35,8 +35,8 @@ for (let offset = 0; offset < games; offset += 1) {
     owned.add(acquisition.augmentId);
     byOwner.set(acquisition.userId, owned);
   }
-  const hasA16 = [...byOwner.values()].some((owned) => owned.has("A16"));
-  const hasG01P11Owner = [...byOwner.values()].some((owned) => owned.has("G01") && owned.has("P11"));
+  const hasA16 = [...byOwner.values()].some((owned) => owned.has("AUG-059"));
+  const hasG01P11Owner = [...byOwner.values()].some((owned) => owned.has("AUG-017") && owned.has("AUG-038"));
   if (hasA16) a16Games += 1;
   if (hasG01P11Owner) g01P11OwnerGames += 1;
 
@@ -62,5 +62,5 @@ console.log(JSON.stringify({
   topErrors: [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10),
 }, null, 2));
 
-if (a16Stalls > 0) throw new Error(`A16 still stalled in ${a16Stalls}/${a16Games} exposed games`);
-if (stackCapErrors > 0) throw new Error(`G01 stack-cap crash still occurred ${stackCapErrors} times`);
+if (a16Stalls > 0) throw new Error(`AUG-059 still stalled in ${a16Stalls}/${a16Games} exposed games`);
+if (stackCapErrors > 0) throw new Error(`AUG-017 stack-cap crash still occurred ${stackCapErrors} times`);

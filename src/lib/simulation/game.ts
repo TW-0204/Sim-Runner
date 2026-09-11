@@ -1,4 +1,4 @@
-import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
+import { AUGMENTS, AUGMENT_BY_ID, resolveAugmentId, type AugmentTier } from "@/lib/augments/catalog";
 import {
   canGrantFaceExtraRoll,
   isGroupUsableWithAugments,
@@ -188,9 +188,9 @@ function immediateReplacementId(
   userId: string,
   phase: number,
   eventIndex: number,
-  sourceId: "A05" | "A06",
+  sourceId: "AUG-048" | "AUG-049",
 ) {
-  const targetTier: AugmentTier = sourceId === "A05" ? "gold" : "prism";
+  const targetTier: AugmentTier = sourceId === "AUG-048" ? "gold" : "prism";
   const ownedIds = context.ownedByUser[userId] ?? [];
   const alreadyClaimedUnique = new Set(
     context.acquisitions
@@ -199,10 +199,10 @@ function immediateReplacementId(
   );
   const candidates = AUGMENTS
     .filter((augment) => augment.tier === targetTier)
-    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")
-    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))
-    .filter((augment) => augment.id !== "A04" || canReceiveA04(context, eventIndex))
-    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))
+    .filter((augment) => augment.id !== "AUG-048" && augment.id !== "AUG-049")
+    .filter((augment) => augment.id !== "AUG-053" || playerHasWaitingPiece(context, userId))
+    .filter((augment) => augment.id !== "AUG-047" || canReceiveA04(context, eventIndex))
+    .filter((augment) => augment.id !== "AUG-053" || playerHasWaitingPiece(context, userId))
     .filter((augment) => canOffer(augment, phase, ownedIds))
     .filter((augment) => !augment.uniquePerGame || !alreadyClaimedUnique.has(augment.id));
   if (!candidates.length) {
@@ -214,7 +214,7 @@ function immediateReplacementId(
 function ownedIdsForOffers(context: SimulationContext) {
   return Object.fromEntries(context.engine.players.map((player) => {
     const consumedReplacementCards = context.acquisitions
-      .filter((item) => item.userId === player.userId && (item.augmentId === "A05" || item.augmentId === "A06"))
+      .filter((item) => item.userId === player.userId && (item.augmentId === "AUG-048" || item.augmentId === "AUG-049"))
       .map((item) => item.augmentId);
     return [player.userId, [...(context.ownedByUser[player.userId] ?? []), ...consumedReplacementCards]];
   }));
@@ -294,10 +294,10 @@ function applyDueAugmentEvents(context: SimulationContext) {
 
     const tier = sequence[event.logicalPhase - 1];
     const baseExcludedIds = context.ruleset.excludedAugmentIdsByLogicalPhase?.[event.logicalPhase] ?? [];
-    const excludedIds = [...baseExcludedIds, ...(canReceiveA04(context, eventIndex) ? [] : ["A04"])];
+    const excludedIds = [...baseExcludedIds, ...(canReceiveA04(context, eventIndex) ? [] : ["AUG-047"])];
     const excludedIdsByUser = Object.fromEntries(context.engine.players.map((player) => [
       player.userId,
-      player.pieces.some((piece) => piece.status === "WAITING") ? [] : ["A10"],
+      player.pieces.some((piece) => piece.status === "WAITING") ? [] : ["AUG-053"],
     ]));
     const a04UpgradePendingByUser = Object.fromEntries(context.engine.players.map((player) => [
       player.userId,
@@ -357,10 +357,10 @@ function applyDueAugmentEvents(context: SimulationContext) {
       const visible = offer.offerIds.slice(0, 3);
       const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
       if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);
-      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
+      const currentlyEligible = visible.filter((id) => id !== "AUG-053" || playerHasWaitingPiece(context, offer.userId));
       const numericSeed = Number(context.seed);
       const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
-      const forceEligible = context.forcedAugmentId !== "A10" || playerHasWaitingPiece(context, offer.userId);
+      const forceEligible = context.forcedAugmentId !== "AUG-053" || playerHasWaitingPiece(context, offer.userId);
       const shouldForce = Boolean(context.forcedAugmentId)
         && forceEligible
         && eventIndex + 1 === (context.forcedAcquisitionIndex ?? 1)
@@ -369,7 +369,7 @@ function applyDueAugmentEvents(context: SimulationContext) {
         ? context.forcedAugmentId!
         : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);
 
-      const acquiredId = selectedId === "A05" || selectedId === "A06"
+      const acquiredId = selectedId === "AUG-048" || selectedId === "AUG-049"
         ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
         : selectedId;
 
@@ -492,7 +492,7 @@ function maybeUseGachaMachine(context: SimulationContext) {
     result.engine,
     actor.userId,
     "augment_event",
-    { kind: "gacha_machine", augmentId: "A02" },
+    { kind: "gacha_machine", augmentId: "AUG-046" },
   );
   commitTransition(context, before, next, actor.userId, "augment_event");
   return true;
@@ -534,7 +534,7 @@ function maybeUseWormhole(context: SimulationContext) {
     )) && engine.results.some((result) => (
       !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)
     ));
-    const hasMarginReturn = owned.includes("A16")
+    const hasMarginReturn = owned.includes("AUG-059")
       && actor.pieces.some((piece) => piece.status === "MARGIN")
       && engine.results.some((result) => !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face));
     if (onlyGroupId && !hasCompatibleWaitingPiece && !hasMarginReturn) {
@@ -580,7 +580,7 @@ function playerPositionScore(engine: GameEngineState, userId: string, owned: str
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return -1_000_000_000;
 
-  if (owned.includes("P02")) {
+  if (owned.includes("AUG-031")) {
     const waiting = player.pieces.filter((piece) => piece.status === "WAITING").length;
     const onBoard = player.pieces.filter((piece) => piece.status === "ON_BOARD").length;
     const reverseProgress = player.pieces.reduce((sum, piece) => sum + piece.pathHistory.length, 0);
@@ -594,14 +594,14 @@ function playerPositionScore(engine: GameEngineState, userId: string, owned: str
     else if (piece.hasEntered) score += 4;
   }
 
-  if (owned.includes("P16")) {
+  if (owned.includes("AUG-042")) {
     score += (engine.augmentRuntime?.[userId]?.enemyCaptureCount ?? 0) * 130;
   }
-  if (owned.includes("P03")) {
+  if (owned.includes("AUG-032")) {
     const occupied = new Set(player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.node != null).map((piece) => piece.node));
     score += FOUR_GUARDIAN_NODES.filter((node) => occupied.has(node)).length * 160;
   }
-  if (owned.includes("P04")) {
+  if (owned.includes("AUG-033")) {
     const center = player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.node === CENTER_NODE);
     score += center.length * 130;
     if (center.length > 1 && new Set(center.map((piece) => piece.groupId)).size === 1) score += center.length * 35;
@@ -615,10 +615,10 @@ function playerPositionScore(engine: GameEngineState, userId: string, owned: str
       if (lastCorner > lastCenter) score += approachScore;
     }
   }
-  if (owned.includes("P14")) {
+  if (owned.includes("AUG-041")) {
     const laps = engine.augmentRuntime?.[userId]?.soloLaps ?? 0;
     score += laps * 420;
-    const representativeId = setups.P14?.pieceId;
+    const representativeId = setups["AUG-041"]?.pieceId;
     const representative = player.pieces.find((piece) => piece.id === representativeId);
     if (representative?.status === "ON_BOARD") score += representative.pathHistory.length * 4;
   }
@@ -653,7 +653,7 @@ function groupRepresentativesForBot(engine: GameEngineState, userId: string, own
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return [];
   const seen = new Set<string>();
-  const allowFinished = owned.includes("P02");
+  const allowFinished = owned.includes("AUG-031");
   return player.pieces.filter((piece) => {
     if (seen.has(piece.groupId)) return false;
     if (piece.status === "WORMHOLE" || piece.status === "MARGIN") return false;
@@ -694,7 +694,7 @@ function bestMove(context: SimulationContext, engine: GameEngineState, userId: s
         context,
         engine,
         userId,
-        moveArgsForTarget(option.groupId, option.result, option.target, owned.includes("P02")),
+        moveArgsForTarget(option.groupId, option.result, option.target, owned.includes("AUG-031")),
       );
       candidates.push({
         next,
@@ -711,7 +711,7 @@ function bestMove(context: SimulationContext, engine: GameEngineState, userId: s
 
 function maybeSaveTomorrow(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  if (!owned.includes("G13") || engine.stage !== "MOVING") return null;
+  if (!owned.includes("AUG-028") || engine.stage !== "MOVING") return null;
   const runtime = engine.augmentRuntime?.[userId];
   if (runtime?.tomorrowStoredResult || runtime?.tomorrowSavedAtTurnNumber === engine.turnNumber) return null;
   const candidates = engine.results.filter((result) => !result.numericPool && !result.id.startsWith("tomorrow:"));
@@ -726,7 +726,7 @@ function maybeSaveTomorrow(context: SimulationContext, engine: GameEngineState, 
 
 function maybeSplitNumberOne(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  if (!owned.includes("G09") || owned.includes("P05") || engine.stage !== "MOVING") return null;
+  if (!owned.includes("AUG-024") || owned.includes("AUG-063") || engine.stage !== "MOVING") return null;
   if (engine.results.some((result) => result.numericBatchId)) return null;
   if (groupRepresentativesForBot(engine, userId, owned).length < 2) return null;
   const result = [...engine.results]
@@ -742,7 +742,7 @@ function maybeSplitNumberOne(context: SimulationContext, engine: GameEngineState
 
 function maybeAllocateNumberPool(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  if (!owned.includes("P05") || engine.stage !== "MOVING") return null;
+  if (!owned.includes("AUG-063") || engine.stage !== "MOVING") return null;
   const pool = engine.results.find((result) => result.numericPool);
   if (!pool) return null;
   const steps = Math.min(5, pool.finalSteps);
@@ -753,7 +753,7 @@ function maybeAllocateNumberPool(context: SimulationContext, engine: GameEngineS
 
 function maybeUseGrandUnity(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  if (!owned.includes("P11") || owned.includes("G01") || engine.stage !== "AWAITING_ROLL") return null;
+  if (!owned.includes("AUG-038") || owned.includes("AUG-017") || engine.stage !== "AWAITING_ROLL") return null;
   if (engine.augmentRuntime?.[userId]?.grandUnityUsed) return null;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return null;
@@ -801,7 +801,7 @@ function resolveRollChoice(context: SimulationContext, engine: GameEngineState, 
 function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
   const godHandFace = engine.pendingRolls[0] === "BASIC"
-    && owned.includes("P19")
+    && owned.includes("AUG-044")
     && godHandChargeCount(engine, userId, owned) > 0
       ? "MO" as const
       : null;
@@ -876,7 +876,7 @@ function resolveStackChoice(context: SimulationContext, engine: GameEngineState,
     }
   }
 
-  if (actorOwned(context, userId).includes("P17")) {
+  if (actorOwned(context, userId).includes("AUG-043")) {
     try {
       const before = structuredClone(engine);
       const captured = applyLoneWolfAllyCapture(engine, actorOwned(context, userId));
@@ -898,7 +898,7 @@ function resolveSplitChoice(context: SimulationContext, engine: GameEngineState,
   const owned = actorOwned(context, userId);
   const before = structuredClone(engine);
 
-  if (owned.includes("P04")) {
+  if (owned.includes("AUG-033")) {
     const next = applySelfRelianceSplit(engine, userId, null, owned);
     return finalizeAction(before, next, userId, context, "split");
   }
@@ -1146,7 +1146,7 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     rng: createSimulationRandomStreams(options.seed, options.ruleset.rngNamespace ?? options.ruleset.id),
     seed: options.seed,
     ruleset: options.ruleset,
-    forcedAugmentId: options.forcedAugmentId,
+    forcedAugmentId: resolveAugmentId(options.forcedAugmentId) ?? options.forcedAugmentId,
     forcedAcquisitionIndex: options.forcedAcquisitionIndex,
     tokenCounter: 0,
     actions: 0,

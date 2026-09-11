@@ -17,11 +17,11 @@ function average(values: number[]) {
 }
 
 function specialAugmentForWin(condition: GameWinCondition | null) {
-  if (condition === "SOLO_RUN") return "P14";
-  if (condition === "FOUR_GUARDIANS") return "P03";
-  if (condition === "CENTER_STACK") return "P04";
-  if (condition === "HUNT") return "P16";
-  if (condition === "MOONWALK") return "P02";
+  if (condition === "SOLO_RUN") return "AUG-041";
+  if (condition === "FOUR_GUARDIANS") return "AUG-032";
+  if (condition === "CENTER_STACK") return "AUG-033";
+  if (condition === "HUNT") return "AUG-042";
+  if (condition === "MOONWALK") return "AUG-031";
   return null;
 }
 
@@ -69,7 +69,7 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
   let g01YutMoSuppressions = 0;
   for (const result of completed) {
     const g01Owners = new Set(
-      result.acquisitions.filter((item) => item.augmentId === "G01").map((item) => item.userId),
+      result.acquisitions.filter((item) => item.augmentId === "AUG-017").map((item) => item.userId),
     );
     for (const userId of g01Owners) {
       g01GamesOwned += 1;

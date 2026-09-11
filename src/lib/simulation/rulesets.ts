@@ -89,7 +89,7 @@ export const BALANCE_RULESETS: Record<BalanceRuleset["id"], BalanceRuleset> = {
       { afterRound: 4, logicalPhase: 3 },
     ],
     excludedAugmentIdsByLogicalPhase: {
-      1: ["P03"],
+      1: ["AUG-032"],
     },
     specialMaxGameExposureByLogicalPhase: {
       1: 0.10,

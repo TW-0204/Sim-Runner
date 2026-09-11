@@ -14,7 +14,7 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
   return { id, face, baseSteps: steps, finalSteps: steps, source: "BASIC", forbidShortcuts };
 }
 
-// A09: the first finisher stores actual branch decisions. The next departing piece is bound to them.
+// AUG-052: the first finisher stores actual branch decisions. The next departing piece is bound to them.
 {
   let engine = createInitialEngine(seeds.slice(0, 2));
   const player = engine.players[0];
@@ -26,7 +26,7 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
   engine.stage = "MOVING";
   engine.pendingRolls = [];
   engine.results = [token("finish", "DO", 1)];
-  engine = applyMove(engine, { groupId: source.groupId, resultId: "finish" }, ["A09"], {}, { p1: ["A09"], p2: [] });
+  engine = applyMove(engine, { groupId: source.groupId, resultId: "finish" }, ["AUG-052"], {}, { p1: ["AUG-052"], p2: [] });
 
   assert.equal(engine.augmentRuntime?.p1?.echoRouteCaptured, true);
   assert.equal(engine.augmentRuntime?.p1?.echoBranchChoices?.["5"], 13);
@@ -39,7 +39,7 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
   engine.results = [token("depart", "YUT", 4)];
   const followerBefore = engine.players[0].pieces.find((piece) => piece.status === "WAITING");
   assert.ok(followerBefore);
-  engine = applyMove(engine, { groupId: followerBefore.groupId, resultId: "depart" }, ["A09"], {}, { p1: ["A09"], p2: [] });
+  engine = applyMove(engine, { groupId: followerBefore.groupId, resultId: "depart" }, ["AUG-052"], {}, { p1: ["AUG-052"], p2: [] });
   assert.equal(engine.augmentRuntime?.p1?.echoFollowerPieceId, followerBefore.id);
 
   engine.currentSeat = 1;
@@ -49,20 +49,20 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
   assert.ok(follower);
   assert.equal(follower.node, 4);
 
-  // With P09 there are normally two paths when a 2-step move passes node 5. Echo must keep 5 -> 13.
+  // With AUG-036 there are normally two paths when a 2-step move passes node 5. Echo must keep 5 -> 13.
   const branchRoll = token("branch", "GAE", 2);
   engine.results = [branchRoll];
-  const echoTargets = legalMoveTargetsWithAugments(engine, "p1", follower, branchRoll, ["A09", "P09"], { p1: ["A09", "P09"], p2: [] });
+  const echoTargets = legalMoveTargetsWithAugments(engine, "p1", follower, branchRoll, ["AUG-052", "AUG-036"], { p1: ["AUG-052", "AUG-036"], p2: [] });
   assert.ok(echoTargets.length > 0);
   assert.ok(echoTargets.every((target) => target.path?.join(",") === "5,13"), `Unexpected echo paths: ${JSON.stringify(echoTargets)}`);
 
   // A stronger forced route takes priority if the stored branch is impossible.
   const forcedOuter = token("forced", "GAE", 2, true);
-  const forcedTargets = legalMoveTargetsWithAugments(engine, "p1", follower, forcedOuter, ["A09", "P09", "P10"], { p1: ["A09", "P09", "P10"], p2: [] });
+  const forcedTargets = legalMoveTargetsWithAugments(engine, "p1", follower, forcedOuter, ["AUG-052", "AUG-036", "AUG-037"], { p1: ["AUG-052", "AUG-036", "AUG-037"], p2: [] });
   assert.ok(forcedTargets.some((target) => target.path?.join(",") === "5,6"));
 }
 
-// A10: transfer one waiting piece to a random opponent, resetting it as the recipient's fresh piece.
+// AUG-053: transfer one waiting piece to a random opponent, resetting it as the recipient's fresh piece.
 {
   const engine = createInitialEngine(seeds);
   const source = engine.players[0];
@@ -108,11 +108,11 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
   after.stage = "MOVING";
   after.pendingRolls = [];
   after.results = [token("win", "DO", 1)];
-  const won = applyMove(after, { groupId: remaining[2].groupId, resultId: "win" }, ["A10"], {}, { p1: ["A10"], p2: [], p3: [] });
+  const won = applyMove(after, { groupId: remaining[2].groupId, resultId: "win" }, ["AUG-053"], {}, { p1: ["AUG-053"], p2: [], p3: [] });
   assert.equal(won.winnerUserId, "p1");
 }
 
-// A10 offer eligibility can be excluded per player when that player has no waiting piece.
+// AUG-053 offer eligibility can be excluded per player when that player has no waiting piece.
 {
   const offers = buildPhaseOffers({
     seed: "batch3-a10-offer",
@@ -120,11 +120,11 @@ function token(id: string, face: RollToken["face"], steps: number, forbidShortcu
     tier: "gold",
     players: [{ userId: "p1", seat: 1 }, { userId: "p2", seat: 2 }],
     ownedByUser: { p1: [], p2: [] },
-    excludedIdsByUser: { p1: ["A10"], p2: [] },
+    excludedIdsByUser: { p1: ["AUG-053"], p2: [] },
   });
   const p1 = offers.find((offer) => offer.userId === "p1");
   assert.ok(p1);
-  assert.ok(!p1.offerIds.includes("A10"));
+  assert.ok(!p1.offerIds.includes("AUG-053"));
 }
 
-console.log("[batch3-probe] PASS: A09/A10 mechanics validated.");
+console.log("[batch3-probe] PASS: AUG-052/AUG-053 mechanics validated.");

@@ -73,12 +73,12 @@ Reference policy must therefore be declared centrally.
 
 Current piece-reference policies:
 
-- `G16` — may reference any currently owned piece, including a borrowed Betrayal piece. If the piece leaves the player's container, choose a valid replacement.
-- `P14` — may reference only a native piece. If the representative becomes invalid, choose a native replacement; if only a finished native piece remains, reset the selected replacement to waiting as required by the existing rule lifecycle.
+- `AUG-030` — may reference any currently owned piece, including a borrowed Betrayal piece. If the piece leaves the player's container, choose a valid replacement.
+- `AUG-041` — may reference only a native piece. If the representative becomes invalid, choose a native replacement; if only a finished native piece remains, reset the selected replacement to waiting as required by the existing rule lifecycle.
 
 `repairInvalidAugmentSetups()` runs at canonical state-transition boundaries. Invariants use the same registry policies, so repair and validation cannot silently diverge.
 
-The registry also supports custom `AugmentReferencePolicy` adapters. Future augments that remember group IDs, result/token IDs, target players, map entities, spawned objects, or other mutable identifiers must register `repair` and/or `problems` there rather than adding cleanup code to unrelated augments such as A10.
+The registry also supports custom `AugmentReferencePolicy` adapters. Future augments that remember group IDs, result/token IDs, target players, map entities, spawned objects, or other mutable identifiers must register `repair` and/or `problems` there rather than adding cleanup code to unrelated augments such as AUG-053.
 
 ## Adding a new augment
 
@@ -102,7 +102,7 @@ A normal new augment should **not** require edits to:
 
 - `src/lib/simulation/game.ts`
 - unrelated augment runtime modules
-- A10 or another ownership-changing augment merely because it stores a reference
+- AUG-053 or another ownership-changing augment merely because it stores a reference
 - legacy patch scripts
 - test-time source-rewrite scripts
 

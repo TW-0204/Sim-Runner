@@ -19,7 +19,7 @@ import type { GameEngineState } from "./types";
 export type SetupsByUser = Record<string, PlayerAugmentSetups>;
 
 /**
- * A10 can transfer a piece that itself came from an earlier Betrayal. The low-level
+ * AUG-053 can transfer a piece that itself came from an earlier Betrayal. The low-level
  * transfer deliberately preserves the original-owner marker, so the lifecycle must
  * normalize the ownership graph after the container move.
  */
@@ -52,7 +52,7 @@ function maybeDeclareSourceWinnerAfterTransfer(
   userId: string,
   ownedIds: string[],
 ) {
-  if (ownedIds.includes("P02") || replacesNormalWinCondition(ownedIds)) return;
+  if (ownedIds.includes("AUG-031") || replacesNormalWinCondition(ownedIds)) return;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player || !player.pieces.every((piece) => piece.status === "FINISHED")) return;
 
@@ -128,8 +128,8 @@ export function applyAugmentAcquisitionLifecycle({
   let engine = engineInput;
   let immediateTransitionFrom: GameEngineState | undefined;
 
-  // Preserve the effective-v11 ordering: P02 scatters before common idea-runtime setup.
-  if (augmentId === "P02") {
+  // Preserve the effective-v11 ordering: AUG-031 scatters before common idea-runtime setup.
+  if (augmentId === "AUG-031") {
     engine = applyMoonwalkAcquisitionScatter(engine, userId, randomNext);
   }
 
@@ -138,15 +138,15 @@ export function applyAugmentAcquisitionLifecycle({
   const runtime = engine.augmentRuntime[userId];
   if (consumeA04UpgradePending) delete runtime.a04UpgradeNextAugment;
 
-  if (augmentId === "A04") armA04OnAcquisition(engine, userId);
-  if (augmentId === "A12") runtime.walkingTrailSegment = randomInt(4);
-  if (augmentId === "A01") {
+  if (augmentId === "AUG-047") armA04OnAcquisition(engine, userId);
+  if (augmentId === "AUG-055") runtime.walkingTrailSegment = randomInt(4);
+  if (augmentId === "AUG-045") {
     runtime.gravityExplosionRound = engine.round;
     runtime.gravityExplosionResolved = false;
   }
-  if (augmentId === "A02") armGachaMachineOnAcquisition(engine, userId);
+  if (augmentId === "AUG-046") armGachaMachineOnAcquisition(engine, userId);
 
-  if (augmentId === "A08") {
+  if (augmentId === "AUG-051") {
     immediateTransitionFrom = engine;
     engine = applyGreatUpheaval(
       engine,
@@ -157,8 +157,8 @@ export function applyAugmentAcquisitionLifecycle({
     );
   }
 
-  if (augmentId === "A13") armWormholeOnAcquisition(engine, userId);
-  if (augmentId === "A15") {
+  if (augmentId === "AUG-056") armWormholeOnAcquisition(engine, userId);
+  if (augmentId === "AUG-058") {
     const owner = engine.players.find((candidate) => candidate.userId === userId);
     const waiting = owner?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
     if (waiting.length > 0) {
@@ -167,7 +167,7 @@ export function applyAugmentAcquisitionLifecycle({
     }
   }
 
-  if (augmentId === "A10") {
+  if (augmentId === "AUG-053") {
     engine = applyBetrayalAcquisitionLifecycle(
       engine,
       userId,

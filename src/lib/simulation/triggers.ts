@@ -212,7 +212,7 @@ function hasSoloJunctionHolder(engine: GameEngineState, userId: string) {
 
 function captureAttemptNodes(input: DetectInput, move: MoveSnapshot) {
   const actorOwned = input.ownedByUser[input.actorUserId] ?? [];
-  const cleanerActive = actorOwned.includes("P06")
+  const cleanerActive = actorOwned.includes("AUG-034")
     && (runtime(input.before, input.actorUserId)?.cleanerMovesUsed ?? 0) < 3;
   if (cleanerActive) return [...new Set(move.newPath)];
   if (move.afterPiece.status === "ON_BOARD" && move.afterPiece.node != null) return [move.afterPiece.node];
@@ -243,28 +243,28 @@ function detectRollTriggers(input: DetectInput, events: Map<string, AugmentTrigg
 
   if (input.actionKind === "roll" && input.after.lastAction.includes("낙!")) {
     for (const [ownerUserId, ids] of Object.entries(input.ownedByUser)) {
-      if (ids.includes("S16")) addMapEvent(events, ownerUserId, "S16");
+      if (ids.includes("AUG-016")) addMapEvent(events, ownerUserId, "AUG-016");
     }
   }
 
   if (input.actionKind === "roll" && input.after.pendingRollChoice?.kind === "DUAL") {
-    if (input.after.pendingRollChoice.reason === "COUNTER" && ownedIds.includes("S11")) {
-      addMapEvent(events, input.actorUserId, "S11");
+    if (input.after.pendingRollChoice.reason === "COUNTER" && ownedIds.includes("AUG-011")) {
+      addMapEvent(events, input.actorUserId, "AUG-011");
     }
-    if (input.after.pendingRollChoice.reason === "EITHER" && ownedIds.includes("P12")) {
-      addMapEvent(events, input.actorUserId, "P12");
+    if (input.after.pendingRollChoice.reason === "EITHER" && ownedIds.includes("AUG-039")) {
+      addMapEvent(events, input.actorUserId, "AUG-039");
     }
   }
 
-  if (input.actionKind === "reroll_do" && ownedIds.includes("S12")) {
-    addMapEvent(events, input.actorUserId, "S12");
+  if (input.actionKind === "reroll_do" && ownedIds.includes("AUG-012")) {
+    addMapEvent(events, input.actorUserId, "AUG-012");
   }
 
-  const beforeCharges = ownedIds.includes("P19") ? (runtime(input.before, input.actorUserId)?.godHandCharges ?? 1) : 0;
-  const afterCharges = ownedIds.includes("P19") ? (runtime(input.after, input.actorUserId)?.godHandCharges ?? 1) : 0;
-  if (beforeCharges > afterCharges) addMapEvent(events, input.actorUserId, "P19", beforeCharges - afterCharges);
+  const beforeCharges = ownedIds.includes("AUG-044") ? (runtime(input.before, input.actorUserId)?.godHandCharges ?? 1) : 0;
+  const afterCharges = ownedIds.includes("AUG-044") ? (runtime(input.after, input.actorUserId)?.godHandCharges ?? 1) : 0;
+  if (beforeCharges > afterCharges) addMapEvent(events, input.actorUserId, "AUG-044", beforeCharges - afterCharges);
 
-  for (const controlledId of ["G03", "G04", "G05"] as const) {
+  for (const controlledId of ["AUG-018", "AUG-019", "AUG-020"] as const) {
     if (!ownedIds.includes(controlledId)) continue;
     const beforeUsed = runtime(input.before, input.actorUserId)?.controlledBasicRollsUsed ?? 0;
     const afterUsed = runtime(input.after, input.actorUserId)?.controlledBasicRollsUsed ?? 0;
@@ -272,31 +272,31 @@ function detectRollTriggers(input: DetectInput, events: Map<string, AugmentTrigg
   }
 
   if (
-    ownedIds.includes("S07")
+    ownedIds.includes("AUG-007")
     && runtime(input.before, input.actorUserId)?.revengeBasicPending
     && !runtime(input.after, input.actorUserId)?.revengeBasicPending
   ) {
-    addMapEvent(events, input.actorUserId, "S07");
+    addMapEvent(events, input.actorUserId, "AUG-007");
   }
 
   const tokens = newlyResolvedResults(input.before, input.after);
   for (const token of tokens) {
-    if (ownedIds.includes("G01") && ["GAE", "YUT", "MO"].includes(token.face)) {
-      addMapEvent(events, input.actorUserId, "G01");
+    if (ownedIds.includes("AUG-017") && ["GAE", "YUT", "MO"].includes(token.face)) {
+      addMapEvent(events, input.actorUserId, "AUG-017");
     }
-    if (ownedIds.includes("S03") && (token.face === "DO" || token.face === "BACKDO")) {
-      addMapEvent(events, input.actorUserId, "S03");
+    if (ownedIds.includes("AUG-003") && (token.face === "DO" || token.face === "BACKDO")) {
+      addMapEvent(events, input.actorUserId, "AUG-003");
     }
-    if (ownedIds.includes("S09") && token.face === "GEOL") {
-      addMapEvent(events, input.actorUserId, "S09");
+    if (ownedIds.includes("AUG-009") && token.face === "GEOL") {
+      addMapEvent(events, input.actorUserId, "AUG-009");
     }
     if (token.source === "CAPTURE" && token.face !== "BACKDO") {
-      if (ownedIds.includes("G02")) addMapEvent(events, input.actorUserId, "G02");
-      else if (ownedIds.includes("S01")) addMapEvent(events, input.actorUserId, "S01");
-      if (ownedIds.includes("P01")) addMapEvent(events, input.actorUserId, "P01");
+      if (ownedIds.includes("AUG-060")) addMapEvent(events, input.actorUserId, "AUG-060");
+      else if (ownedIds.includes("AUG-001")) addMapEvent(events, input.actorUserId, "AUG-001");
+      if (ownedIds.includes("AUG-062")) addMapEvent(events, input.actorUserId, "AUG-062");
     }
     if (
-      ownedIds.includes("S13")
+      ownedIds.includes("AUG-013")
       && token.source === "BASIC"
       && token.face !== "BACKDO"
       && token.finalSteps > 0
@@ -304,7 +304,7 @@ function detectRollTriggers(input: DetectInput, events: Map<string, AugmentTrigg
       && runtime(input.before, input.actorUserId)?.vacancyInitialized
       && (runtime(input.before, input.actorUserId)?.vacancySkipsRemaining ?? 2) <= 0
     ) {
-      addMapEvent(events, input.actorUserId, "S13");
+      addMapEvent(events, input.actorUserId, "AUG-013");
     }
   }
 }
@@ -318,74 +318,74 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
   const positive = Boolean(result && result.face !== "BACKDO" && result.finalSteps > 0);
   const suppressBonuses = Boolean(result?.suppressMovementBonuses);
 
-  if (ownedIds.includes("P02")) addMapEvent(events, input.actorUserId, "P02");
+  if (ownedIds.includes("AUG-031")) addMapEvent(events, input.actorUserId, "AUG-031");
 
   if (positive && result) {
     if (!suppressBonuses) {
-      if (ownedIds.includes("S06") && move.beforePiece.status === "WAITING") {
-        addMapEvent(events, input.actorUserId, "S06");
+      if (ownedIds.includes("AUG-006") && move.beforePiece.status === "WAITING") {
+        addMapEvent(events, input.actorUserId, "AUG-006");
       }
       const actorBefore = player(input.before, input.actorUserId);
-      if (ownedIds.includes("S08") && actorBefore?.pieces.filter((piece) => piece.status === "FINISHED").length === 3) {
-        addMapEvent(events, input.actorUserId, "S08");
+      if (ownedIds.includes("AUG-008") && actorBefore?.pieces.filter((piece) => piece.status === "FINISHED").length === 3) {
+        addMapEvent(events, input.actorUserId, "AUG-008");
       }
-      if (ownedIds.includes("S14") && runtime(input.before, input.actorUserId)?.junctionBoostGroups?.[move.groupId]) {
-        addMapEvent(events, input.actorUserId, "S14");
+      if (ownedIds.includes("AUG-014") && runtime(input.before, input.actorUserId)?.junctionBoostGroups?.[move.groupId]) {
+        addMapEvent(events, input.actorUserId, "AUG-014");
       }
       if (
-        ownedIds.includes("G07")
+        ownedIds.includes("AUG-022")
         && hasSoloJunctionHolder(input.before, input.actorUserId)
         && !isSoloJunctionGroup(input.before, input.actorUserId, move.groupId)
       ) {
-        addMapEvent(events, input.actorUserId, "G07");
+        addMapEvent(events, input.actorUserId, "AUG-022");
       }
       if (move.beforeGroup.length >= 2) {
-        if (ownedIds.includes("P15")) addMapEvent(events, input.actorUserId, "P15");
-        else if (ownedIds.includes("G08")) addMapEvent(events, input.actorUserId, "G08");
+        if (ownedIds.includes("AUG-065")) addMapEvent(events, input.actorUserId, "AUG-065");
+        else if (ownedIds.includes("AUG-023")) addMapEvent(events, input.actorUserId, "AUG-023");
       }
-      const acePieceId = input.setupsByUser?.[input.actorUserId]?.G16?.pieceId;
-      if (ownedIds.includes("G16") && acePieceId && move.beforeGroup.some((piece) => piece.id === acePieceId)) {
-        addMapEvent(events, input.actorUserId, "G16");
+      const acePieceId = input.setupsByUser?.[input.actorUserId]?.["AUG-030"]?.pieceId;
+      if (ownedIds.includes("AUG-030") && acePieceId && move.beforeGroup.some((piece) => piece.id === acePieceId)) {
+        addMapEvent(events, input.actorUserId, "AUG-030");
       }
     }
-    if (ownedIds.includes("P10")) addMapEvent(events, input.actorUserId, "P10");
+    if (ownedIds.includes("AUG-037")) addMapEvent(events, input.actorUserId, "AUG-037");
   }
 
-  if (ownedIds.includes("S10") && result?.face === "BACKDO") {
+  if (ownedIds.includes("AUG-010") && result?.face === "BACKDO") {
     const rewardId = `${result.id}:backdo-bonus`;
     if (input.after.results.some((token) => token.id === rewardId) || input.after.lastAction.includes("1칸 이동권 획득")) {
-      addMapEvent(events, input.actorUserId, "S10");
+      addMapEvent(events, input.actorUserId, "AUG-010");
     }
   }
-  if (ownedIds.includes("G10") && input.after.lastAction.includes("추격자 조기 정지")) {
-    addMapEvent(events, input.actorUserId, "G10");
+  if (ownedIds.includes("AUG-025") && input.after.lastAction.includes("추격자 조기 정지")) {
+    addMapEvent(events, input.actorUserId, "AUG-025");
   }
-  if (ownedIds.includes("P09") && input.after.lastAction.includes("길은 내가 만든다")) {
-    addMapEvent(events, input.actorUserId, "P09");
+  if (ownedIds.includes("AUG-036") && input.after.lastAction.includes("길은 내가 만든다")) {
+    addMapEvent(events, input.actorUserId, "AUG-036");
   }
 
   const cleanerDelta = runtimeNumberDelta(input.before, input.after, input.actorUserId, "cleanerMovesUsed");
-  if (ownedIds.includes("P06") && cleanerDelta > 0) addMapEvent(events, input.actorUserId, "P06", cleanerDelta);
+  if (ownedIds.includes("AUG-034") && cleanerDelta > 0) addMapEvent(events, input.actorUserId, "AUG-034", cleanerDelta);
 
   const lapDelta = runtimeNumberDelta(input.before, input.after, input.actorUserId, "soloLaps");
-  if (ownedIds.includes("P14") && lapDelta > 0) addMapEvent(events, input.actorUserId, "P14", lapDelta);
+  if (ownedIds.includes("AUG-041") && lapDelta > 0) addMapEvent(events, input.actorUserId, "AUG-041", lapDelta);
 
   if (
-    ownedIds.includes("G15")
+    ownedIds.includes("AUG-029")
     && positive
     && !suppressBonuses
     && runtime(input.before, input.actorUserId)?.athleteAcceleratingGroupId === move.groupId
     && (runtime(input.before, input.actorUserId)?.athleteConsecutiveMoves ?? 0) > 0
   ) {
-    addMapEvent(events, input.actorUserId, "G15");
+    addMapEvent(events, input.actorUserId, "AUG-029");
   }
 
   const captured = capturedGroups(input.before, input.after, input.actorUserId);
   for (const group of captured) {
     const victimOwned = input.ownedByUser[group.userId] ?? [];
-    if (victimOwned.includes("S05") && group.pieces.length >= 2) addMapEvent(events, group.userId, "S05");
-    if (victimOwned.includes("G12")) addMapEvent(events, group.userId, "G12");
-    if (victimOwned.includes("P07")) addMapEvent(events, group.userId, "P07");
+    if (victimOwned.includes("AUG-005") && group.pieces.length >= 2) addMapEvent(events, group.userId, "AUG-005");
+    if (victimOwned.includes("AUG-027")) addMapEvent(events, group.userId, "AUG-027");
+    if (victimOwned.includes("AUG-064")) addMapEvent(events, group.userId, "AUG-064");
   }
 
   {
@@ -395,16 +395,16 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
       if (!groupStillAt(input.after, group)) continue;
       const victimOwned = input.ownedByUser[group.userId] ?? [];
       if (
-        victimOwned.includes("S04")
+        victimOwned.includes("AUG-004")
         && (runtime(input.before, group.userId)?.timesCaptured ?? 0) >= 5
       ) {
-        addMapEvent(events, group.userId, "S04");
+        addMapEvent(events, group.userId, "AUG-004");
       }
       if (
-        victimOwned.includes("P13")
+        victimOwned.includes("AUG-040")
         && runtime(input.before, group.userId)?.sanctuaryGroups?.[group.groupId] === group.node
       ) {
-        addMapEvent(events, group.userId, "P13");
+        addMapEvent(events, group.userId, "AUG-040");
       }
     }
   }
@@ -412,20 +412,20 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
   const alleyNode = parseBlockedNode(input.after.lastAction, "골목대장 자동 봉쇄");
   if (alleyNode != null) {
     for (const [userId, ids] of Object.entries(input.ownedByUser)) {
-      if (!ids.includes("G06")) continue;
+      if (!ids.includes("AUG-021")) continue;
       const blocked = Object.entries(runtime(input.before, userId)?.alleyBlockades ?? {})
         .some(([, node]) => node === alleyNode);
-      if (blocked) addMapEvent(events, userId, "G06");
+      if (blocked) addMapEvent(events, userId, "AUG-021");
     }
   }
 
   const sanctuaryNode = parseBlockedNode(input.after.lastAction, "성역 통과 차단");
   if (sanctuaryNode != null) {
     for (const [userId, ids] of Object.entries(input.ownedByUser)) {
-      if (!ids.includes("P13")) continue;
+      if (!ids.includes("AUG-040")) continue;
       const blocked = Object.entries(runtime(input.before, userId)?.sanctuaryGroups ?? {})
         .some(([, node]) => node === sanctuaryNode);
-      if (blocked) addMapEvent(events, userId, "P13");
+      if (blocked) addMapEvent(events, userId, "AUG-040");
     }
   }
 }
@@ -433,47 +433,47 @@ function detectMovementTriggers(input: DetectInput, events: Map<string, AugmentT
 function detectDirectActionTriggers(input: DetectInput, events: Map<string, AugmentTriggerEvent>) {
   const ownedIds = input.ownedByUser[input.actorUserId] ?? [];
 
-  if (input.actionKind === "save_result" && ownedIds.includes("G13")) addMapEvent(events, input.actorUserId, "G13");
-  if (input.actionKind === "split_number" && ownedIds.includes("G09")) addMapEvent(events, input.actorUserId, "G09");
-  if (input.actionKind === "allocate_number_pool" && ownedIds.includes("P05")) addMapEvent(events, input.actorUserId, "P05");
-  if (input.actionKind === "grand_unity" && ownedIds.includes("P11")) addMapEvent(events, input.actorUserId, "P11");
-  if (input.actionKind === "ally_capture" && ownedIds.includes("P17")) addMapEvent(events, input.actorUserId, "P17");
+  if (input.actionKind === "save_result" && ownedIds.includes("AUG-028")) addMapEvent(events, input.actorUserId, "AUG-028");
+  if (input.actionKind === "split_number" && ownedIds.includes("AUG-024")) addMapEvent(events, input.actorUserId, "AUG-024");
+  if (input.actionKind === "allocate_number_pool" && ownedIds.includes("AUG-063")) addMapEvent(events, input.actorUserId, "AUG-063");
+  if (input.actionKind === "grand_unity" && ownedIds.includes("AUG-038")) addMapEvent(events, input.actorUserId, "AUG-038");
+  if (input.actionKind === "ally_capture" && ownedIds.includes("AUG-043")) addMapEvent(events, input.actorUserId, "AUG-043");
 
   if (input.actionKind === "relocate") {
     const kind = input.before.pendingRelocationChoice?.opportunities[0]?.kind;
     const used = !input.after.lastAction.includes("사용 안 함");
-    if (used && kind === "FRIEND" && ownedIds.includes("S15")) addMapEvent(events, input.actorUserId, "S15");
-    if (used && kind === "HITCHHIKER" && ownedIds.includes("P18")) addMapEvent(events, input.actorUserId, "P18");
+    if (used && kind === "FRIEND" && ownedIds.includes("AUG-015")) addMapEvent(events, input.actorUserId, "AUG-015");
+    if (used && kind === "HITCHHIKER" && ownedIds.includes("AUG-066")) addMapEvent(events, input.actorUserId, "AUG-066");
   }
 
-  if (["stack", "relocate", "grand_unity"].includes(input.actionKind) && ownedIds.includes("S02")) {
+  if (["stack", "relocate", "grand_unity"].includes(input.actionKind) && ownedIds.includes("AUG-002")) {
     const extra = scheduledAugmentRolls(input.after) - scheduledAugmentRolls(input.before);
-    if (extra > 0) addMapEvent(events, input.actorUserId, "S02", extra);
+    if (extra > 0) addMapEvent(events, input.actorUserId, "AUG-002", extra);
   }
 
   if (input.actionKind === "capture_choice") {
     const decision = input.before.pendingCaptureChoice?.decisions[0];
-    if (decision?.kind === "INSURANCE" && owned(input, decision.chooserUserId, "G11")) {
-      addMapEvent(events, decision.chooserUserId, "G11");
+    if (decision?.kind === "INSURANCE" && owned(input, decision.chooserUserId, "AUG-026")) {
+      addMapEvent(events, decision.chooserUserId, "AUG-026");
     }
     if (
       decision?.kind === "DOUBLE_HIT"
-      && owned(input, decision.chooserUserId, "P08")
+      && owned(input, decision.chooserUserId, "AUG-035")
       && input.after.lastAction.includes("추가로 잡았습니다")
     ) {
-      addMapEvent(events, decision.chooserUserId, "P08");
+      addMapEvent(events, decision.chooserUserId, "AUG-035");
     }
 
     const captured = capturedGroups(input.before, input.after, decision?.kind === "DOUBLE_HIT" ? decision.attackerUserId : input.actorUserId);
     for (const group of captured) {
       const victimOwned = input.ownedByUser[group.userId] ?? [];
-      if (victimOwned.includes("S05") && group.pieces.length >= 2) addMapEvent(events, group.userId, "S05");
-      if (victimOwned.includes("G12")) addMapEvent(events, group.userId, "G12");
-      if (victimOwned.includes("P07")) addMapEvent(events, group.userId, "P07");
+      if (victimOwned.includes("AUG-005") && group.pieces.length >= 2) addMapEvent(events, group.userId, "AUG-005");
+      if (victimOwned.includes("AUG-027")) addMapEvent(events, group.userId, "AUG-027");
+      if (victimOwned.includes("AUG-064")) addMapEvent(events, group.userId, "AUG-064");
     }
   }
 
-  if (input.actionKind === "split" && ownedIds.includes("G14")) {
+  if (input.actionKind === "split" && ownedIds.includes("AUG-061")) {
     const pending = input.before.pendingSplitChoice;
     const ownerAfter = player(input.after, input.actorUserId);
     if (pending && ownerAfter) {
@@ -482,38 +482,38 @@ function detectDirectActionTriggers(input: DetectInput, events: Map<string, Augm
           .filter((piece) => pending.pieceIds.includes(piece.id))
           .map((piece) => piece.groupId),
       );
-      if (groupIds.size > 1) addMapEvent(events, input.actorUserId, "G14");
+      if (groupIds.size > 1) addMapEvent(events, input.actorUserId, "AUG-061");
     }
   }
 }
 
 function detectRuntimeAndWinTriggers(input: DetectInput, events: Map<string, AugmentTriggerEvent>) {
   for (const [userId, ids] of Object.entries(input.ownedByUser)) {
-    if (ids.includes("P16")) {
+    if (ids.includes("AUG-042")) {
       const delta = runtimeNumberDelta(input.before, input.after, userId, "enemyCaptureCount");
-      if (delta > 0) addMapEvent(events, userId, "P16", delta);
+      if (delta > 0) addMapEvent(events, userId, "AUG-042", delta);
     }
   }
 
   if (!input.before.winnerUserId && input.after.winnerUserId) {
     const winner = input.after.winnerUserId;
-    if (input.after.winnerCondition === "FOUR_GUARDIANS" && owned(input, winner, "P03")) {
-      addMapEvent(events, winner, "P03");
+    if (input.after.winnerCondition === "FOUR_GUARDIANS" && owned(input, winner, "AUG-032")) {
+      addMapEvent(events, winner, "AUG-032");
     }
-    if (input.after.winnerCondition === "CENTER_STACK" && owned(input, winner, "P04")) {
-      addMapEvent(events, winner, "P04");
+    if (input.after.winnerCondition === "CENTER_STACK" && owned(input, winner, "AUG-033")) {
+      addMapEvent(events, winner, "AUG-033");
     }
-    if (input.after.winnerCondition === "MOONWALK" && owned(input, winner, "P02")) {
-      const key = `${winner}:P02`;
-      if (!events.has(key)) addMapEvent(events, winner, "P02");
+    if (input.after.winnerCondition === "MOONWALK" && owned(input, winner, "AUG-031")) {
+      const key = `${winner}:AUG-031`;
+      if (!events.has(key)) addMapEvent(events, winner, "AUG-031");
     }
-    if (input.after.winnerCondition === "SOLO_RUN" && owned(input, winner, "P14")) {
-      const key = `${winner}:P14`;
-      if (!events.has(key)) addMapEvent(events, winner, "P14");
+    if (input.after.winnerCondition === "SOLO_RUN" && owned(input, winner, "AUG-041")) {
+      const key = `${winner}:AUG-041`;
+      if (!events.has(key)) addMapEvent(events, winner, "AUG-041");
     }
-    if (input.after.winnerCondition === "HUNT" && owned(input, winner, "P16")) {
-      const key = `${winner}:P16`;
-      if (!events.has(key)) addMapEvent(events, winner, "P16");
+    if (input.after.winnerCondition === "HUNT" && owned(input, winner, "AUG-042")) {
+      const key = `${winner}:AUG-042`;
+      if (!events.has(key)) addMapEvent(events, winner, "AUG-042");
     }
   }
 }

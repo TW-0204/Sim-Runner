@@ -11,14 +11,14 @@ import {
  * the allowed set may shrink, but it must never expand.
  */
 const FROZEN_LEGACY_BASELINE = new Set([
-  "S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08",
-  "S09", "S10", "S11", "S12", "S13", "S14", "S15", "S16",
-  "G01", "G03", "G04", "G05", "G06", "G07", "G08", "G09",
-  "G10", "G11", "G12", "G13", "G15", "G16",
-  "P02", "P03", "P04", "P06", "P08", "P09", "P10", "P11",
-  "P12", "P13", "P14", "P16", "P17", "P19",
-  "A01", "A02", "A04", "A05", "A06", "A07", "A08", "A09",
-  "A10", "A11", "A12", "A13", "A14", "A15", "A16",
+  "AUG-001", "AUG-002", "AUG-003", "AUG-004", "AUG-005", "AUG-006", "AUG-007", "AUG-008",
+  "AUG-009", "AUG-010", "AUG-011", "AUG-012", "AUG-013", "AUG-014", "AUG-015", "AUG-016",
+  "AUG-017", "AUG-018", "AUG-019", "AUG-020", "AUG-021", "AUG-022", "AUG-023", "AUG-024",
+  "AUG-025", "AUG-026", "AUG-027", "AUG-028", "AUG-029", "AUG-030",
+  "AUG-031", "AUG-032", "AUG-033", "AUG-034", "AUG-035", "AUG-036", "AUG-037", "AUG-038",
+  "AUG-039", "AUG-040", "AUG-041", "AUG-042", "AUG-043", "AUG-044",
+  "AUG-045", "AUG-046", "AUG-047", "AUG-048", "AUG-049", "AUG-050", "AUG-051", "AUG-052",
+  "AUG-053", "AUG-054", "AUG-055", "AUG-056", "AUG-057", "AUG-058", "AUG-059",
 ]);
 
 const problems = augmentRuntimeRegistryProblems();

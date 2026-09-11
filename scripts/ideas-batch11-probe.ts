@@ -20,9 +20,9 @@ function sequenceRandom(values: number[]) {
   return () => values[index++] ?? 0;
 }
 
-// 1) A02 is Prism and available in either augment timing slot.
+// 1) AUG-046 is Prism and available in either augment timing slot.
 {
-  const augment = AUGMENT_BY_ID.get("A02");
+  const augment = AUGMENT_BY_ID.get("AUG-046");
   assert.equal(augment?.tier, "prism");
   assert.equal(augment?.timing, undefined);
 }
@@ -32,21 +32,21 @@ function sequenceRandom(values: number[]) {
   const engine = fresh(2);
   armGachaMachineOnAcquisition(engine, "p1");
   assert.equal(engine.augmentRuntime?.p1?.gachaNextUseRound, 3);
-  assert.equal(gachaMachineIsReady(engine, "p1", ["A02"]), false);
+  assert.equal(gachaMachineIsReady(engine, "p1", ["AUG-046"]), false);
   engine.round = 3;
-  assert.equal(gachaMachineIsReady(engine, "p1", ["A02"]), true);
+  assert.equal(gachaMachineIsReady(engine, "p1", ["AUG-046"]), true);
 
   const p1 = engine.players[0];
   p1.pieces[0].status = "ON_BOARD";
   p1.pieces[0].node = 5;
   p1.pieces[0].hasEntered = true;
-  const result = applyGachaMachine(engine, "p1", "p1", p1.pieces[0].id, 29, { p1: ["A02"], p2: [] }, () => 0.1);
+  const result = applyGachaMachine(engine, "p1", "p1", p1.pieces[0].id, 29, { p1: ["AUG-046"], p2: [] }, () => 0.1);
   assert.equal(result.success, true);
   assert.equal(result.landedNode, 29);
   assert.equal(result.engine.augmentRuntime?.p1?.gachaNextUseRound, 5);
-  assert.equal(gachaMachineIsReady(result.engine, "p1", ["A02"]), false);
+  assert.equal(gachaMachineIsReady(result.engine, "p1", ["AUG-046"]), false);
   result.engine.round = 5;
-  assert.equal(gachaMachineIsReady(result.engine, "p1", ["A02"]), true);
+  assert.equal(gachaMachineIsReady(result.engine, "p1", ["AUG-046"]), true);
 }
 
 // 3) 40% succeeds exactly. The 60% failure branch cannot accidentally land on the requested node.
@@ -59,7 +59,7 @@ function sequenceRandom(values: number[]) {
   piece.node = 10;
   piece.hasEntered = true;
 
-  const success = applyGachaMachine(engine, "p1", "p1", piece.id, 29, { p1: ["A02"], p2: [] }, () => 0.399999);
+  const success = applyGachaMachine(engine, "p1", "p1", piece.id, 29, { p1: ["AUG-046"], p2: [] }, () => 0.399999);
   assert.equal(success.success, true);
   assert.equal(success.landedNode, 29);
 
@@ -69,7 +69,7 @@ function sequenceRandom(values: number[]) {
     "p1",
     piece.id,
     29,
-    { p1: ["A02"], p2: [] },
+    { p1: ["AUG-046"], p2: [] },
     sequenceRandom([0.4, 0]),
   );
   assert.equal(failure.success, false);
@@ -99,7 +99,7 @@ function sequenceRandom(values: number[]) {
   const oldGroup = p2.pieces[0].groupId;
   engine.augmentRuntime.p2 = { fixedOneGroups: { [oldGroup]: true } };
 
-  const result = applyGachaMachine(engine, "p1", "p2", p2.pieces[0].id, 29, { p1: ["A02"], p2: [] }, () => 0.1);
+  const result = applyGachaMachine(engine, "p1", "p2", p2.pieces[0].id, 29, { p1: ["AUG-046"], p2: [] }, () => 0.1);
   const n1 = result.engine.players[0];
   const n2 = result.engine.players[1];
 
@@ -118,9 +118,9 @@ function sequenceRandom(values: number[]) {
   const engine = fresh(2);
   engine.round = 3;
   engine.augmentRuntime = { p1: { gachaNextUseRound: 3 } };
-  assert.throws(() => applyGachaMachine(engine, "p1", "p2", engine.players[1].pieces[0].id, 10, { p1: ["A02"], p2: [] }, () => 0.1));
+  assert.throws(() => applyGachaMachine(engine, "p1", "p2", engine.players[1].pieces[0].id, 10, { p1: ["AUG-046"], p2: [] }, () => 0.1));
   engine.players[1].pieces[0].status = "FINISHED";
-  assert.throws(() => applyGachaMachine(engine, "p1", "p2", engine.players[1].pieces[0].id, 10, { p1: ["A02"], p2: [] }, () => 0.1));
+  assert.throws(() => applyGachaMachine(engine, "p1", "p2", engine.players[1].pieces[0].id, 10, { p1: ["AUG-046"], p2: [] }, () => 0.1));
 }
 
-console.log("[batch11-probe] PASS: A02 Gacha Machine mechanics validated.");
+console.log("[batch11-probe] PASS: AUG-046 Gacha Machine mechanics validated.");

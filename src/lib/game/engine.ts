@@ -196,7 +196,7 @@ export function applyMarginExit(
   pieceId: string,
   ownedIds: string[],
 ): GameEngineState {
-  if (!ownedIds.includes("A16")) throw new Error("여백의 미 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-059")) throw new Error("여백의 미 증강을 보유하고 있지 않습니다.");
   if (engineInput.stage !== "AWAITING_ROLL" && engineInput.stage !== "MOVING") {
     throw new Error("현재 단계에서는 여백으로 보낼 수 없습니다.");
   }
@@ -249,7 +249,7 @@ export function applyMarginReturn(
   ownedIds: string[],
   ownedByUser: Record<string, string[]> = {},
 ): GameEngineState {
-  if (!ownedIds.includes("A16")) throw new Error("여백의 미 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-059")) throw new Error("여백의 미 증강을 보유하고 있지 않습니다.");
   if (engineInput.stage !== "MOVING") throw new Error("이동 결과가 있을 때만 여백에서 복귀할 수 있습니다.");
   const actor = currentPlayer(engineInput);
   if (actor.userId !== userId) throw new Error("현재 플레이어의 말만 여백에서 복귀할 수 있습니다.");
@@ -308,7 +308,7 @@ export function applyMarginReturn(
 }
 
 export function isForcedRelocationImmune(ownedIds: string[]) {
-  return ownedIds.includes("P10");
+  return ownedIds.includes("AUG-037");
 }
 
 const GRAVITY_INTERNAL_NODES = [11, 12, 13, 14, 15, 16, 17, 23, 24] as const;
@@ -354,7 +354,7 @@ export function armGachaMachineOnAcquisition(engine: GameEngineState, userId: st
 }
 
 export function gachaMachineIsReady(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("A02")) return false;
+  if (!ownedIds.includes("AUG-046")) return false;
   const nextUseRound = engine.augmentRuntime?.[userId]?.gachaNextUseRound;
   return nextUseRound != null && engine.round >= nextUseRound;
 }
@@ -491,13 +491,13 @@ export function applyGreatUpheaval(
 
   returnFinishedBetrayals(engine);
 
-  // P14 replaces normal completion with laps. A08 can place the designated runner
+  // AUG-041 replaces normal completion with laps. AUG-051 can place the designated runner
   // directly into FINISHED, so normalize that through the same lap resolver used by moves.
   for (const player of engine.players) {
     const owned = ownedByUser[player.userId] ?? [];
-    if (!owned.includes("P14")) continue;
+    if (!owned.includes("AUG-041")) continue;
     const setups = setupsByUser[player.userId] ?? {};
-    const representativeId = setups.P14?.pieceId;
+    const representativeId = setups["AUG-041"]?.pieceId;
     const representative = player.pieces.find((piece) => piece.id === representativeId);
     if (!representative || representative.status !== "FINISHED") continue;
     const lap = resolveSoloLap(engine, [representative], owned, setups);
@@ -505,7 +505,7 @@ export function applyGreatUpheaval(
   }
 
   // The reshuffle can itself complete a normal win. If more than one player completes
-  // simultaneously, the A08 owner takes priority, then normal seat order.
+  // simultaneously, the AUG-051 owner takes priority, then normal seat order.
   const orderedPlayers = [...engine.players].sort((left, right) => {
     if (left.userId === sourceUserId) return -1;
     if (right.userId === sourceUserId) return 1;
@@ -516,7 +516,7 @@ export function applyGreatUpheaval(
     const owned = ownedByUser[player.userId] ?? [];
     if (
       isForcedRelocationImmune(owned)
-      || owned.includes("P14")
+      || owned.includes("AUG-041")
       || !replacesNormalWinCondition(owned)
     ) continue;
     const special = specialWinForPlayer(engine, player.userId, owned);
@@ -527,7 +527,7 @@ export function applyGreatUpheaval(
 
   for (const player of orderedPlayers) {
     const owned = ownedByUser[player.userId] ?? [];
-    if (owned.includes("P02") || replacesNormalWinCondition(owned)) continue;
+    if (owned.includes("AUG-031") || replacesNormalWinCondition(owned)) continue;
     if (!player.pieces.every((piece) => piece.status === "FINISHED")) continue;
     declareWinner(engine, player.userId, "NORMAL", `${player.displayName}: 대격변으로 모든 말이 완주했습니다!`);
     return engine;
@@ -595,7 +595,7 @@ export function applyBombExplosion(
 }
 
 export function wormholeIsOpen(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("A13")) return false;
+  if (!ownedIds.includes("AUG-056")) return false;
   const nextOpen = engine.augmentRuntime?.[userId]?.wormholeNextOpenRound;
   return nextOpen != null && engine.round >= nextOpen;
 }
@@ -663,7 +663,7 @@ export function applyWormholeTurn(
       !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)
     ));
     const hasOtherResultCompatiblePiece = hasOtherOnBoardPiece || (hasWaitingPiece && hasForwardResult);
-    const hasMarginReturn = ownedIds.includes("A16")
+    const hasMarginReturn = ownedIds.includes("AUG-059")
       && player.pieces.some((piece) => piece.status === "MARGIN")
       && engine.results.some((result) => !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face));
     if (!hasOtherResultCompatiblePiece && !hasMarginReturn) {
@@ -689,7 +689,7 @@ export function applyWormholeTurn(
     piece.node = null;
   }
 
-  // A13 replaces only the BASIC throw. Existing non-roll movement results, if any, remain usable.
+  // AUG-056 replaces only the BASIC throw. Existing non-roll movement results, if any, remain usable.
   engine.pendingRolls.shift();
   engine.pendingRollChoice = null;
   if (engine.pendingRolls.length > 0) {
@@ -710,7 +710,7 @@ export function resolveDueWormholeReturns(
   setups: PlayerAugmentSetups = {},
   random: () => number = Math.random,
 ): GameEngineState {
-  if (!ownedIds.includes("A13")) return engineInput;
+  if (!ownedIds.includes("AUG-056")) return engineInput;
   const transit = engineInput.augmentRuntime?.[userId]?.wormholeTransit;
   if (!transit) return engineInput;
   const due = Object.entries(transit).filter(([, item]) => item.returnRound <= engineInput.round);
@@ -728,7 +728,7 @@ export function resolveDueWormholeReturns(
       if (runtime.wormholeTransit) delete runtime.wormholeTransit[groupId];
       continue;
     }
-    const moonwalk = ownedIds.includes("P02");
+    const moonwalk = ownedIds.includes("AUG-031");
     const candidates = wormholeReturnCandidates(item.originNode, moonwalk);
     if (!candidates.length) throw new Error("웜홀 복귀 위치를 찾지 못했습니다.");
     const index = Math.min(candidates.length - 1, Math.floor(random() * candidates.length));
@@ -865,7 +865,7 @@ function declareWinner(engine: GameEngineState, userId: string, condition: GameW
 
 function checkSpecialWinner(engine: GameEngineState, ownedIds: string[]) {
   const player = currentPlayer(engine);
-  if (ownedIds.includes("P02") && isMoonwalkHome(engine, player.userId)) {
+  if (ownedIds.includes("AUG-031") && isMoonwalkHome(engine, player.userId)) {
     declareWinner(engine, player.userId, "MOONWALK", `${player.displayName}: 문워크 · 모든 말을 대기로 되돌렸습니다!`);
     return player.userId;
   }
@@ -876,7 +876,7 @@ function checkSpecialWinner(engine: GameEngineState, ownedIds: string[]) {
 }
 
 function checkBasicWinner(engine: GameEngineState, ownedIds: string[]) {
-  if (ownedIds.includes("P02") || replacesNormalWinCondition(ownedIds)) return null;
+  if (ownedIds.includes("AUG-031") || replacesNormalWinCondition(ownedIds)) return null;
   const player = currentPlayer(engine);
   if (player.pieces.every((piece) => piece.status === "FINISHED")) {
     declareWinner(engine, player.userId, "NORMAL", `${player.displayName} 승리!`);
@@ -1001,7 +1001,7 @@ function samePath(left: number[] | undefined, right: number[] | undefined) {
 }
 
 function marginShrinkState(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("A16")) return null;
+  if (!ownedIds.includes("AUG-059")) return null;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   const finishedCount = Math.min(3, player?.pieces.filter((piece) => piece.status === "FINISHED").length ?? 0);
   if (finishedCount <= 0) return null;
@@ -1070,8 +1070,8 @@ function buildForwardTargetPlans(
   }
   const shrinkMovements = (forbidShortcutEntry: boolean) => forwardMoveOptions(start, result.finalSteps, {
     forbidShortcutEntry,
-    allowPassingShortcutEntry: ownedIds.includes("P09"),
-    allowUniversalCenterChoice: ownedIds.includes("P04"),
+    allowPassingShortcutEntry: ownedIds.includes("AUG-036"),
+    allowUniversalCenterChoice: ownedIds.includes("AUG-033"),
   })
     .map((movement) => applyMarginShrinkToForwardMove(movement, shrink))
     .filter((movement): movement is NonNullable<typeof movement> => movement != null);
@@ -1113,7 +1113,7 @@ function buildForwardTargetPlans(
       normalKind = "FORCED";
     }
 
-    const chaseTargets = ownedIds.includes("G10")
+    const chaseTargets = ownedIds.includes("AUG-025")
       ? chaseTargetsOnPath(engine, userId, normalTraversed, ownedByUser).filter((node) => node !== normalNode)
       : [];
     for (const node of chaseTargets) {
@@ -1158,7 +1158,7 @@ function buildReverseTargetPlans(
   if (start == null) return [];
   const movements = reverseMoveOptions(start, result.finalSteps, {
     forbidShortcutEntry: result.forbidShortcuts,
-    allowPassingShortcutEntry: ownedIds.includes("P09"),
+    allowPassingShortcutEntry: ownedIds.includes("AUG-036"),
   });
   const plans: ForwardTargetPlan[] = [];
 
@@ -1176,7 +1176,7 @@ function buildReverseTargetPlans(
       normalKind = "FORCED";
     }
 
-    const chaseTargets = ownedIds.includes("G10")
+    const chaseTargets = ownedIds.includes("AUG-025")
       ? chaseTargetsOnPath(engine, userId, normalTraversed, ownedByUser).filter((node) => node !== normalNode)
       : [];
     for (const node of chaseTargets) {
@@ -1217,21 +1217,21 @@ export function adjustedResultForMove(
   setups: PlayerAugmentSetups,
 ) {
   const adjusted = adjustedResultForGroup(engine, userId, groupId, result, ownedIds, setups);
-  if (!ownedIds.includes("P02") || result.face === "BACKDO") return adjusted;
+  if (!ownedIds.includes("AUG-031") || result.face === "BACKDO") return adjusted;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   const group = player?.pieces.filter((piece) => piece.groupId === groupId) ?? [];
   if (!group.length || !group.every((piece) => piece.status === "FINISHED")) return adjusted;
 
   let bonus = 0;
-  if (ownedIds.includes("P15") && group.length >= 2) bonus += group.length - 1;
-  else if (ownedIds.includes("G08") && group.length >= 2) bonus += 1;
-  const acePieceId = setups.G16?.pieceId;
-  if (ownedIds.includes("G16") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
-  if (ownedIds.includes("P10")) bonus += 2;
+  if (ownedIds.includes("AUG-065") && group.length >= 2) bonus += group.length - 1;
+  else if (ownedIds.includes("AUG-023") && group.length >= 2) bonus += 1;
+  const acePieceId = setups["AUG-030"]?.pieceId;
+  if (ownedIds.includes("AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+  if (ownedIds.includes("AUG-037")) bonus += 2;
   return {
     ...result,
     finalSteps: result.finalSteps + bonus,
-    forbidShortcuts: ownedIds.includes("P10") || result.forbidShortcuts,
+    forbidShortcuts: ownedIds.includes("AUG-037") || result.forbidShortcuts,
   };
 }
 
@@ -1247,7 +1247,7 @@ export function legalMoveTargetsWithAugments(
   if (result.face !== "BACKDO" && result.finalSteps <= 0 && isPlagueGroup(engine, userId, piece.groupId)) {
     return [{ node: null, finished: false, kind: "FORCED", path: [] }];
   }
-  if (ownedIds.includes("P02")) {
+  if (ownedIds.includes("AUG-031")) {
     if (result.face === "BACKDO") {
       if (piece.status !== "ON_BOARD" || piece.node == null) return [];
       const forwardResult: RollToken = { ...result, face: "MOVE1", finalSteps: Math.max(1, Math.abs(result.finalSteps)) };
@@ -1279,7 +1279,7 @@ export function legalMoveOptionsWithAugments(
   if (engine.stage !== "MOVING") return [];
   const player = engine.players.find((candidate) => candidate.userId === userId && candidate.seat === engine.currentSeat);
   if (!player) return [];
-  const moonwalk = ownedIds.includes("P02");
+  const moonwalk = ownedIds.includes("AUG-031");
   const options: EngineLegalMoveOption[] = [];
 
   for (const result of engine.results) {
@@ -1376,7 +1376,7 @@ function firstCleanerWaterGhostStop(
       const victim = group[0];
       if (!victim) continue;
       const victimOwned = ownedByUser[victim.ownerUserId] ?? [];
-      if (!victimOwned.includes("P07")) continue;
+      if (!victimOwned.includes("AUG-064")) continue;
       if (isSanctuaryGroup(engine, victim.ownerUserId, victim.groupId, node)) continue;
       if (isCaptureImmune(engine, victim.ownerUserId, victimOwned)) continue;
       return node;
@@ -1420,7 +1420,7 @@ function captureAtNode(
     const capturedPieceIds = capturedGroup.map((piece) => piece.id);
     clearPlagueForGroup(engine, victim.ownerUserId, victim.groupId);
     returnPiecesAfterEnemyCapture(capturedGroup, victimOwned);
-    if (moverOwned.includes("A14")) infectPlaguePieceIds(engine, victim.ownerUserId, capturedPieceIds);
+    if (moverOwned.includes("AUG-057")) infectPlaguePieceIds(engine, victim.ownerUserId, capturedPieceIds);
   }
 
   return { captureCount, captureExtraRollCount, attackerReturned };
@@ -1506,7 +1506,7 @@ function relocationOpportunitiesAfterMove(
     movingGroupSize + (actorGroups.get(candidateGroupId)?.length ?? 0) <= maxPieces
   );
 
-  if (ownedIds.includes("S15")) {
+  if (ownedIds.includes("AUG-015")) {
     const neighborNodes = new Set<number>();
     const previousNode = actualPath.length >= 2
       ? actualPath[actualPath.length - 2]
@@ -1515,7 +1515,7 @@ function relocationOpportunitiesAfterMove(
         : null;
     if (previousNode != null && previousNode !== FINISH_NODE) neighborNodes.add(previousNode);
 
-    if (ownedIds.includes("P02")) {
+    if (ownedIds.includes("AUG-031")) {
       if (effectiveResult.face === "BACKDO") {
         for (const next of forwardMoveOptions(destination, 1, { forbidShortcutEntry: effectiveResult.forbidShortcuts })) {
           if (!next.finished && next.node != null) neighborNodes.add(next.node);
@@ -1538,7 +1538,7 @@ function relocationOpportunitiesAfterMove(
     if (candidates.length) opportunities.push({ kind: "FRIEND", candidateGroupIds: candidates });
   }
 
-  if (ownedIds.includes("P18")) {
+  if (ownedIds.includes("AUG-066")) {
     const passedNodes = new Set(actualPath.filter((node) => node !== destination));
     const candidates = candidateGroupsAtNodes(engine, userId, movingGroupId, passedNodes, false)
       .filter((groupId) => fitsStackLimit(groupId, 3));
@@ -1573,7 +1573,7 @@ function nearestOuterCorner(node: number) {
 }
 
 function applyUniverseCenterRewards(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("P04")) return 0;
+  if (!ownedIds.includes("AUG-033")) return 0;
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return 0;
   const centerCount = player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.node === 15).length;
@@ -1690,8 +1690,8 @@ function relocateOwnGroupIntoMovingGroup(
 }
 
 function resolveSoloLap(engine: GameEngineState, group: PieceState[], ownedIds: string[], setups: PlayerAugmentSetups) {
-  if (!ownedIds.includes("P14")) return null;
-  const representativeId = setups.P14?.pieceId;
+  if (!ownedIds.includes("AUG-041")) return null;
+  const representativeId = setups["AUG-041"]?.pieceId;
   if (!representativeId || !group.some((piece) => piece.id === representativeId)) return null;
   const player = engine.players.find((candidate) => (
     candidate.pieces.some((piece) => piece.id === representativeId)
@@ -1735,7 +1735,7 @@ export function applyMove(
   const resultIndex = engine.results.findIndex((result) => result.id === args.resultId);
   if (resultIndex < 0) throw new Error("사용할 수 없는 이동 결과입니다.");
   const result = engine.results[resultIndex];
-  const moonwalk = ownedIds.includes("P02");
+  const moonwalk = ownedIds.includes("AUG-031");
   const group = groupPieces(engine, args.groupId, moonwalk);
   if (!group.length) throw new Error("움직일 말을 찾지 못했습니다.");
   const mover = currentPlayer(engine);
@@ -1767,7 +1767,7 @@ export function applyMove(
     finishResolvedMove(engine, 0, 0, ownedIds);
     return engine;
   }
-  const cleanerWasActive = isCleanerActive(engine, mover.userId, ownedIds) && !ownedIds.includes("A14");
+  const cleanerWasActive = isCleanerActive(engine, mover.userId, ownedIds) && !ownedIds.includes("AUG-057");
   consumeGroupMoveFixedToOne(engine, mover.userId, args.groupId);
 
   let destination: number | null = null;
@@ -1951,7 +1951,7 @@ export function applyMove(
   const captureText = captures.captureCount > 0 && !cleanerWasActive ? ` · 상대 묶음 ${captures.captureCount}개 잡기` : "";
   const rewardText = backdoReward ? " · 1칸 이동권 획득" : "";
   const waterGhostText = captures.attackerReturned
-    ? ownedIds.includes("P02") ? " · 물귀신으로 문워크 출발점 복귀" : " · 물귀신으로 함께 대기"
+    ? ownedIds.includes("AUG-031") ? " · 물귀신으로 문워크 출발점 복귀" : " · 물귀신으로 함께 대기"
     : "";
 
   if (finished) {
@@ -2035,7 +2035,7 @@ export function applyRelocationChoice(engineInput: GameEngineState, sourceGroupI
   if (sourceGroupId != null) {
     const valid = liveRelocationCandidates(engine, pending, current.candidateGroupIds);
     if (!valid.includes(sourceGroupId)) throw new Error("선택할 수 없는 재배치 대상입니다.");
-    if (ownedIds.includes("G01")) {
+    if (ownedIds.includes("AUG-017")) {
       const sourceCount = player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.groupId === sourceGroupId).length;
       const movingCount = player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.groupId === pending.movingGroupId).length;
       if (sourceCount + movingCount > 2) throw new Error("개판은 한 묶음에 최대 2개의 말만 업을 수 있습니다.");
@@ -2062,7 +2062,7 @@ export function applyStackChoice(engineInput: GameEngineState, stack: boolean, o
   const player = currentPlayer(engine);
   if (stack) {
     const mergeIds = new Set([pending.movingGroupId, ...pending.alliedGroupIds]);
-    if (ownedIds.includes("G01")) {
+    if (ownedIds.includes("AUG-017")) {
       const mergedPieceCount = player.pieces.filter((piece) => (
         piece.status === "ON_BOARD"
         && piece.node === pending.destination
@@ -2089,7 +2089,7 @@ export function applyStackChoice(engineInput: GameEngineState, stack: boolean, o
 
 export function applyGrandUnity(engineInput: GameEngineState, anchorGroupId: string, ownedIds: string[] = []): GameEngineState {
   const engine = clone(engineInput);
-  if (!ownedIds.includes("P11")) throw new Error("대동단결 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-038")) throw new Error("대동단결 증강을 보유하고 있지 않습니다.");
   if (engine.stage !== "AWAITING_ROLL" && engine.stage !== "MOVING") throw new Error("지금은 대동단결을 사용할 수 없습니다.");
   const player = currentPlayer(engine);
   engine.augmentRuntime ??= {};
@@ -2107,7 +2107,7 @@ export function applyGrandUnity(engineInput: GameEngineState, anchorGroupId: str
   if (!anchor?.length || destination == null) throw new Error("대동단결 기준 묶음을 찾지 못했습니다.");
 
   const mergeIds = [...groups.keys()];
-  if (ownedIds.includes("G01")) {
+  if (ownedIds.includes("AUG-017")) {
     const mergedPieceCount = [...groups.values()].reduce((sum, pieces) => sum + pieces.length, 0);
     if (mergedPieceCount > 2) throw new Error("개판은 한 묶음에 최대 2개의 말만 업을 수 있습니다.");
   }

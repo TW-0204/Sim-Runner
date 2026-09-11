@@ -23,17 +23,17 @@ const originalGameSource = readFileSync(gamePath, "utf-8");
 const originalEffectsSource = readFileSync(effectsPath, "utf-8");
 
 const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceS04 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceS04 ? \"S04\" : context.rng.augment.pick(visible);`;
+const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceS04 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceS04 ? \"AUG-004\" : context.rng.augment.pick(visible);`;
 
-const immunityBlock = `export function isCaptureImmune(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, \"S04\")) return false;\n  return (engine.augmentRuntime?.[userId]?.timesCaptured ?? 0) >= 4;\n}`;
-const temporaryImmunityBlock = `export function isCaptureImmune(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, \"S04\")) return false;\n  const untilRound = (engine.augmentRuntime?.[userId] as any)?.s04ImmuneUntilRound ?? -1;\n  return engine.round <= untilRound;\n}`;
+const immunityBlock = `export function isCaptureImmune(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, \"AUG-004\")) return false;\n  return (engine.augmentRuntime?.[userId]?.timesCaptured ?? 0) >= 4;\n}`;
+const temporaryImmunityBlock = `export function isCaptureImmune(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, \"AUG-004\")) return false;\n  const untilRound = (engine.augmentRuntime?.[userId] as any)?.s04ImmuneUntilRound ?? -1;\n  return engine.round <= untilRound;\n}`;
 
-const captureLine = `  if (has(ownedIds, \"S04\")) runtime.timesCaptured = (runtime.timesCaptured ?? 0) + 1;`;
-const temporaryCaptureBlock = `  if (has(ownedIds, \"S04\")) {\n    runtime.timesCaptured = (runtime.timesCaptured ?? 0) + 1;\n    if (runtime.timesCaptured === 4) {\n      (runtime as any).s04ImmuneUntilRound = engine.round + ${duration} - 1;\n    }\n  }`;
+const captureLine = `  if (has(ownedIds, \"AUG-004\")) runtime.timesCaptured = (runtime.timesCaptured ?? 0) + 1;`;
+const temporaryCaptureBlock = `  if (has(ownedIds, \"AUG-004\")) {\n    runtime.timesCaptured = (runtime.timesCaptured ?? 0) + 1;\n    if (runtime.timesCaptured === 4) {\n      (runtime as any).s04ImmuneUntilRound = engine.round + ${duration} - 1;\n    }\n  }`;
 
 if (!originalGameSource.includes(selectionBlock)) throw new Error("augment-selection block not found");
-if (!originalEffectsSource.includes(immunityBlock)) throw new Error("S04 immunity block not found");
-if (!originalEffectsSource.includes(captureLine)) throw new Error("S04 capture counter line not found");
+if (!originalEffectsSource.includes(immunityBlock)) throw new Error("AUG-004 immunity block not found");
+if (!originalEffectsSource.includes(captureLine)) throw new Error("AUG-004 capture counter line not found");
 
 writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
 writeFileSync(
@@ -76,7 +76,7 @@ try {
       attempts += 1;
       const forcedSeat = seed % playerCount + 1;
       const forcedUserId = `sim-p${forcedSeat}`;
-      const acquisitions = result.acquisitions.filter((item) => item.augmentId === "S04");
+      const acquisitions = result.acquisitions.filter((item) => item.augmentId === "AUG-004");
       const forced = acquisitions.some((item) => item.userId === forcedUserId && item.acquisitionIndex === 1);
       const duplicateOwner = acquisitions.some((item) => item.userId !== forcedUserId);
       if (!forced || duplicateOwner) continue;
@@ -112,9 +112,9 @@ try {
 
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const md = [
-  `# S04 Temporary Immunity — ${duration} round(s)`,
+  `# AUG-004 Temporary Immunity — ${duration} round(s)`,
   "",
-  "Rule: after the 4th capture against the owner, S04 grants global capture immunity for a limited number of rounds instead of permanently.",
+  "Rule: after the 4th capture against the owner, AUG-004 grants global capture immunity for a limited number of rounds instead of permanently.",
   "",
   "| Players | Owner win | Baseline | Delta | Avg round |",
   "|---:|---:|---:|---:|---:|",

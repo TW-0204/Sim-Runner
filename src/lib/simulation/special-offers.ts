@@ -1,3 +1,4 @@
+import { augmentRandomizationKey } from "@/lib/augments/catalog";
 import { buildSpecialOfferCandidateIds, deterministicInt } from "@/lib/augments/server";
 
 export type SimulationPhaseOffer = { userId: string; offerIds: string[] };
@@ -57,7 +58,7 @@ export function injectRareSpecialOffer(args: {
   if (!augmentId) return { offers: args.offers, shown: null as SpecialOfferShown | null };
 
   const slot = deterministicInt(
-    `rare-special-slot:${args.seed}:${args.eventIndex}:${args.logicalPhase}:${target.offer.userId}:${augmentId}`,
+    `rare-special-slot:${args.seed}:${args.eventIndex}:${args.logicalPhase}:${target.offer.userId}:${augmentRandomizationKey(augmentId)}`,
     3,
   );
   const offers = args.offers.map((offer) => ({ ...offer, offerIds: [...offer.offerIds] }));

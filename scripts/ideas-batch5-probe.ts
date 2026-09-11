@@ -17,7 +17,7 @@ const seeds = [
   assert.equal(piece?.groupId, "1-1");
   assert.equal(placed.augmentRuntime?.p1?.turtleLockedUntilRoundByPiece?.["1-1"], 3);
   assert.equal(isTurtleGroupLocked(placed, "p1", "1-1"), true);
-  assert.equal(isGroupUsableWithAugments(placed, "p1", "1-1", ["A15"]), false);
+  assert.equal(isGroupUsableWithAugments(placed, "p1", "1-1", ["AUG-058"]), false);
 
   const round2 = structuredClone(placed);
   round2.round = 2;
@@ -26,10 +26,10 @@ const seeds = [
   const round3 = structuredClone(placed);
   round3.round = 3;
   assert.equal(isTurtleGroupLocked(round3, "p1", "1-1"), false);
-  assert.equal(isGroupUsableWithAugments(round3, "p1", "1-1", ["A15"]), true);
+  assert.equal(isGroupUsableWithAugments(round3, "p1", "1-1", ["AUG-058"]), true);
 }
 
-// A locked A15 piece can still be captured, and capture immediately clears the remaining freeze.
+// A locked AUG-058 piece can still be captured, and capture immediately clears the remaining freeze.
 {
   let engine = createInitialEngine(seeds);
   engine = applyTurtleAndHarePlacement(engine, "p1", "1-1");
@@ -43,7 +43,7 @@ const seeds = [
   attacker.hasEntered = true;
   attacker.pathHistory = [28];
 
-  const after = applyMove(engine, { groupId: attacker.groupId, resultId: "move", forwardPath: [29] }, [], {}, { p1: ["A15"], p2: [] });
+  const after = applyMove(engine, { groupId: attacker.groupId, resultId: "move", forwardPath: [29] }, [], {}, { p1: ["AUG-058"], p2: [] });
   const turtle = after.players[0].pieces.find((piece) => piece.id === "1-1");
   assert.equal(turtle?.status, "WAITING");
   assert.equal(turtle?.node, null);
@@ -64,13 +64,13 @@ const seeds = [
   mover.hasEntered = true;
   mover.pathHistory = [28];
 
-  const after = applyMove(engine, { groupId: mover.groupId, resultId: "move", forwardPath: [29] }, ["A15"], {}, { p1: ["A15"], p2: [] });
+  const after = applyMove(engine, { groupId: mover.groupId, resultId: "move", forwardPath: [29] }, ["AUG-058"], {}, { p1: ["AUG-058"], p2: [] });
   const turtle = after.players[0].pieces.find((piece) => piece.id === "1-1")!;
   const moved = after.players[0].pieces.find((piece) => piece.id === "1-2")!;
   assert.equal(turtle.node, 29);
   assert.equal(moved.node, 29);
-  assert.notEqual(turtle.groupId, moved.groupId, "Frozen A15 piece must not stack");
+  assert.notEqual(turtle.groupId, moved.groupId, "Frozen AUG-058 piece must not stack");
   assert.notEqual(after.stage, "STACK_CHOICE");
 }
 
-console.log("[batch5-probe] PASS: A15 Turtle and Hare mechanics validated.");
+console.log("[batch5-probe] PASS: AUG-058 Turtle and Hare mechanics validated.");

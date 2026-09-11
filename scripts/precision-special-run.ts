@@ -13,19 +13,19 @@ function positiveInteger(name: string, value: string | undefined, fallback: numb
   return parsed;
 }
 
-const augmentId = argument("augment") ?? "P04";
+const augmentId = argument("augment") ?? "AUG-033";
 const games = positiveInteger("games", argument("games"), 1_000);
 const outputDir = argument("output-dir") ?? "precision-results";
-const acquisitionIndex = augmentId === "P02" ? 2 : 1;
+const acquisitionIndex = augmentId === "AUG-031" ? 2 : 1;
 const expectedCondition: Record<string, string> = {
-  P02: "MOONWALK",
-  P04: "CENTER_STACK",
-  P14: "SOLO_RUN",
-  P16: "HUNT",
+  "AUG-031": "MOONWALK",
+  "AUG-033": "CENTER_STACK",
+  "AUG-041": "SOLO_RUN",
+  "AUG-042": "HUNT",
 };
 
 if (!expectedCondition[augmentId]) {
-  throw new Error(`Unsupported Special augment: ${augmentId}. Use P02, P04, P14, or P16.`);
+  throw new Error(`Unsupported Special augment: ${augmentId}. Use AUG-031, AUG-033, AUG-041, or AUG-042.`);
 }
 
 type PlayerCount = 2 | 3 | 4;
@@ -45,7 +45,7 @@ type PlayerReport = {
   deltaPp: number;
 };
 
-const specialIds = new Set(["P02", "P03", "P04", "P14", "P16"]);
+const specialIds = new Set(["AUG-031", "AUG-032", "AUG-033", "AUG-041", "AUG-042"]);
 const reports: PlayerReport[] = [];
 const startedAt = Date.now();
 
@@ -154,7 +154,7 @@ const markdown = [
   `- expected special win condition: ${report.expectedCondition}`,
   `- valid games: ${games.toLocaleString()} per player count, ${(games * 3).toLocaleString()} total`,
   "- forced owner seat rotates every seed to reduce seat bias",
-  "- games with another owner of the same target Special or an earlier Special on the forced P02 owner are discarded",
+  "- games with another owner of the same target Special or an earlier Special on the forced AUG-031 owner are discarded",
   "",
   "| Players | Owner win | Baseline | Delta | Special-condition wins | Avg round | Incomplete | Discarded contexts |",
   "|---:|---:|---:|---:|---:|---:|---:|---:|",

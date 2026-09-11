@@ -9,11 +9,11 @@ type InvariantContext = {
 };
 
 const SPECIAL_WIN_AUGMENT: Partial<Record<NonNullable<GameEngineState["winnerCondition"]>, string>> = {
-  SOLO_RUN: "P14",
-  FOUR_GUARDIANS: "P03",
-  CENTER_STACK: "P04",
-  HUNT: "P16",
-  MOONWALK: "P02",
+  SOLO_RUN: "AUG-041",
+  FOUR_GUARDIANS: "AUG-032",
+  CENTER_STACK: "AUG-033",
+  HUNT: "AUG-042",
+  MOONWALK: "AUG-031",
 };
 
 function invariantError(message: string, label?: string): never {

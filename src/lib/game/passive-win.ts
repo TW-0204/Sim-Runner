@@ -16,7 +16,7 @@ export function passiveMoonwalkWinner(
 ) {
   if (engine.winnerUserId) return null;
   for (const player of engine.players) {
-    if (!(ownedByUser[player.userId] ?? []).includes("P02")) continue;
+    if (!(ownedByUser[player.userId] ?? []).includes("AUG-031")) continue;
     if (!isMoonwalkHome(engine, player.userId)) continue;
     return player;
   }

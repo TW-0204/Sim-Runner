@@ -23,12 +23,12 @@ const originalGameSource = readFileSync(gamePath, "utf-8");
 const originalEffectsSource = readFileSync(effectsPath, "utf-8");
 
 const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceS04 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceS04 ? \"S04\" : context.rng.augment.pick(visible);`;
+const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceS04 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceS04 ? \"AUG-004\" : context.rng.augment.pick(visible);`;
 
 const immunityLine = `  return (engine.augmentRuntime?.[userId]?.timesCaptured ?? 0) >= 4;`;
 const replacementLine = `  return (engine.augmentRuntime?.[userId]?.timesCaptured ?? 0) >= ${threshold};`;
 if (!originalGameSource.includes(selectionBlock)) throw new Error("augment-selection block not found");
-if (!originalEffectsSource.includes(immunityLine)) throw new Error("S04 immunity threshold line not found");
+if (!originalEffectsSource.includes(immunityLine)) throw new Error("AUG-004 immunity threshold line not found");
 
 writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
 writeFileSync(effectsPath, originalEffectsSource.replace(immunityLine, replacementLine), "utf-8");
@@ -73,7 +73,7 @@ try {
       attempts += 1;
       const forcedSeat = seed % playerCount + 1;
       const forcedUserId = `sim-p${forcedSeat}`;
-      const acquisitions = result.acquisitions.filter((item) => item.augmentId === "S04");
+      const acquisitions = result.acquisitions.filter((item) => item.augmentId === "AUG-004");
       const forced = acquisitions.some((item) => item.userId === forcedUserId && item.acquisitionIndex === 1);
       const duplicateOwner = acquisitions.some((item) => item.userId !== forcedUserId);
       if (!forced || duplicateOwner) continue;
@@ -84,7 +84,7 @@ try {
       }
       roundSum += result.round;
       if (result.winnerSeat === forcedSeat) wins += 1;
-      const blocks = result.triggerCountsByUser?.[forcedUserId]?.S04 ?? 0;
+      const blocks = result.triggerCountsByUser?.[forcedUserId]?.["AUG-004"] ?? 0;
       if (blocks > 0) blockedCaptureGames += 1;
       blockedCaptureEvents += blocks;
     }
@@ -116,7 +116,7 @@ try {
 
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const md = [
-  `# S04 Threshold Precision — ${threshold} captures`,
+  `# AUG-004 Threshold Precision — ${threshold} captures`,
   "",
   "| Players | Owner win | Baseline | Delta | Games blocking capture | Block events/game | Avg round |",
   "|---:|---:|---:|---:|---:|---:|---:|",

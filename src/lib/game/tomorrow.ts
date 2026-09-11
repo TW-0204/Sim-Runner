@@ -31,7 +31,7 @@ export function injectTomorrowResult(
   userId: string,
   ownedIds: string[],
 ): GameEngineState {
-  if (!ownedIds.includes("G13")) return engineInput;
+  if (!ownedIds.includes("AUG-028")) return engineInput;
   const stored = engineInput.augmentRuntime?.[userId]?.tomorrowStoredResult;
   const savedAt = engineInput.augmentRuntime?.[userId]?.tomorrowSavedAtTurnNumber;
   if (!stored || savedAt == null || engineInput.turnNumber <= savedAt) return engineInput;
@@ -62,7 +62,7 @@ export function saveResultForTomorrow(
   resultId: string,
   ownedIds: string[],
 ): GameEngineState {
-  if (!ownedIds.includes("G13")) throw new Error("내일의 나에게 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-028")) throw new Error("내일의 나에게 증강을 보유하고 있지 않습니다.");
   if (engineInput.stage !== "MOVING") throw new Error("이동 결과가 있을 때만 저장할 수 있습니다.");
 
   const engine = structuredClone(engineInput);

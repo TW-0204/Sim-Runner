@@ -41,7 +41,7 @@ function rehomeRuntimeGroupKeys(
 
 /**
  * Re-roots a surviving group when the piece whose id was used as groupId leaves the
- * player's container. Native pieces are preferred as the new root so a borrowed A10
+ * player's container. Native pieces are preferred as the new root so a borrowed AUG-053
  * piece cannot keep the group dependent on another future ownership transfer.
  */
 export function rehomeGroupAfterPieceRemoval(

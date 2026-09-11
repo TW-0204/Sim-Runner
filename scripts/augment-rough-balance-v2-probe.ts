@@ -18,8 +18,8 @@ engine.stage = "AWAITING_ROLL";
 engine.pendingRolls = ["BASIC"];
 
 assert.throws(
-  () => applyMarginExit(engine, "p1", second.id, ["A16"]),
+  () => applyMarginExit(engine, "p1", second.id, ["AUG-059"]),
   /여백에는 자신의 말 1기만 들어갈 수 있습니다/,
 );
 
-console.log("[rough-balance-v2-probe] PASS: A16 allows at most one piece in margin.");
+console.log("[rough-balance-v2-probe] PASS: AUG-059 allows at most one piece in margin.");

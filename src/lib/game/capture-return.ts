@@ -1,7 +1,7 @@
 import type { PieceState, PieceStatus } from "./types";
 
 export function captureReturnStatus(ownedIds: string[]): PieceStatus {
-  return ownedIds.includes("P02") ? "FINISHED" : "WAITING";
+  return ownedIds.includes("AUG-031") ? "FINISHED" : "WAITING";
 }
 
 export function enemyCaptureReturnStatus(ownedIds: string[]): PieceStatus {

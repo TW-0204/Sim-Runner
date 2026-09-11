@@ -41,7 +41,7 @@ function runtimeForPlayer(engine: GameEngineState, userId: string) {
 }
 
 function withoutDo(face: RollFace, ownedIds: string[], random: () => number) {
-  if (!has(ownedIds, "A11") || face !== "DO") return face;
+  if (!has(ownedIds, "AUG-054") || face !== "DO") return face;
   const roll = random() * 0.8464;
   if (roll < 0.3456) return "GAE" as RollFace;
   if (roll < 0.6912) return "GEOL" as RollFace;
@@ -58,15 +58,15 @@ export function transformRollFace(
   random: () => number = Math.random,
 ) {
   let transformed = face;
-  if (source === "CAPTURE" && has(ownedIds, "P01")) {
+  if (source === "CAPTURE" && has(ownedIds, "AUG-062")) {
     transformed = "YUT";
   } else if (source === "BASIC") {
-    const controlled = has(ownedIds, "G03") || has(ownedIds, "G04") || has(ownedIds, "G05");
+    const controlled = has(ownedIds, "AUG-018") || has(ownedIds, "AUG-019") || has(ownedIds, "AUG-020");
     if (controlled) {
       const runtime = runtimeForPlayer(engine, userId);
       const used = runtime.controlledBasicRollsUsed ?? 0;
       let active = true;
-      if (has(ownedIds, "G05")) {
+      if (has(ownedIds, "AUG-020")) {
         runtime.g05StartRound ??= engine.round;
         if (engine.round >= runtime.g05StartRound + 3) active = false;
       } else if (used >= 5) {
@@ -76,9 +76,9 @@ export function transformRollFace(
       }
 
       if (active) {
-        if (has(ownedIds, "G03")) transformed = FORWARD_SEQUENCE[used] ?? face;
-        else if (has(ownedIds, "G04")) transformed = REVERSE_SEQUENCE[used] ?? face;
-        else if (has(ownedIds, "G05")) transformed = random() < 0.5 ? "MO" : "DO";
+        if (has(ownedIds, "AUG-018")) transformed = FORWARD_SEQUENCE[used] ?? face;
+        else if (has(ownedIds, "AUG-019")) transformed = REVERSE_SEQUENCE[used] ?? face;
+        else if (has(ownedIds, "AUG-020")) transformed = random() < 0.5 ? "MO" : "DO";
       }
     }
   }
@@ -87,20 +87,20 @@ export function transformRollFace(
 
 export function finalStepsForRoll(face: RollFace, source: RollSource, ownedIds: string[]) {
   let steps = baseStepsForFace(face);
-  if (has(ownedIds, "S03")) {
+  if (has(ownedIds, "AUG-003")) {
     if (face === "DO") steps = 2;
     if (face === "BACKDO") steps = -2;
   }
-  if (face === "GEOL" && has(ownedIds, "S09")) steps += 1;
+  if (face === "GEOL" && has(ownedIds, "AUG-009")) steps += 1;
   if (source === "CAPTURE" && face !== "BACKDO") {
-    if (has(ownedIds, "G02")) steps += 2;
-    else if (has(ownedIds, "S01")) steps += 1;
+    if (has(ownedIds, "AUG-060")) steps += 2;
+    else if (has(ownedIds, "AUG-001")) steps += 1;
   }
   return steps;
 }
 
 export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {
-  if (has(ownedIds, "G01")) return face === "GAE";
+  if (has(ownedIds, "AUG-017")) return face === "GAE";
   return face === "YUT" || face === "MO";
 }
 
@@ -111,7 +111,7 @@ export function canGrantFaceExtraRoll(
   ownedIds: string[],
 ) {
   if (!grantsFaceExtraRoll(face, ownedIds)) return false;
-  if (!has(ownedIds, "G01")) return true;
+  if (!has(ownedIds, "AUG-017")) return true;
   const runtime = engine.augmentRuntime?.[userId];
   if (runtime?.g01ExtraTurnNumber !== engine.turnNumber) return true;
   return (runtime.g01ExtraRollsGranted ?? 0) < 2;
@@ -124,7 +124,7 @@ export function consumeFaceExtraRollGrant(
   ownedIds: string[],
 ) {
   if (!canGrantFaceExtraRoll(engine, userId, face, ownedIds)) return false;
-  if (!has(ownedIds, "G01")) return true;
+  if (!has(ownedIds, "AUG-017")) return true;
   const runtime = runtimeForPlayer(engine, userId);
   if (runtime.g01ExtraTurnNumber !== engine.turnNumber) {
     runtime.g01ExtraTurnNumber = engine.turnNumber;
@@ -141,7 +141,7 @@ export function armA04OnAcquisition(engine: GameEngineState, userId: string) {
 }
 
 export function queueA04BonusForNextBasic(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "A04") || engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
+  if (!has(ownedIds, "AUG-047") || engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
   const runtime = runtimeForPlayer(engine, userId);
   if (!runtime.a04NextBasicBonusPending) return false;
   runtime.a04NextBasicBonusPending = false;
@@ -180,7 +180,7 @@ export function echoAllowsForwardPath(
   traversed: number[],
   ownedIds: string[],
 ) {
-  if (!has(ownedIds, "A09") || has(ownedIds, "P02")) return true;
+  if (!has(ownedIds, "AUG-052") || has(ownedIds, "AUG-031")) return true;
   const runtime = engine.augmentRuntime?.[userId];
   if (!runtime?.echoRouteCaptured || runtime.echoCompleted) return true;
 
@@ -206,7 +206,7 @@ export function armEchoFollowerForDeparture(
   startedWaiting: boolean,
   ownedIds: string[],
 ) {
-  if (!has(ownedIds, "A09") || has(ownedIds, "P02") || !startedWaiting) return;
+  if (!has(ownedIds, "AUG-052") || has(ownedIds, "AUG-031") || !startedWaiting) return;
   const runtime = runtimeForPlayer(engine, userId);
   if (!runtime.echoRouteCaptured || runtime.echoCompleted || runtime.echoFollowerPieceId || (runtime.echoFollowersRemaining ?? 0) <= 0) return;
   const player = engine.players.find((candidate) => candidate.userId === userId);
@@ -221,7 +221,7 @@ export function recordEchoFinish(
   finished: boolean,
   ownedIds: string[],
 ) {
-  if (!finished || !has(ownedIds, "A09") || has(ownedIds, "P02")) return;
+  if (!finished || !has(ownedIds, "AUG-052") || has(ownedIds, "AUG-031")) return;
   const runtime = runtimeForPlayer(engine, userId);
   const player = engine.players.find((candidate) => candidate.userId === userId);
   const group = player?.pieces.filter((piece) => piece.groupId === groupId) ?? [];
@@ -296,7 +296,7 @@ export function betrayalCaptureBonusRoll(
 }
 
 export function grantsBackdoMoveToken(ownedIds: string[]) {
-  return has(ownedIds, "S10");
+  return has(ownedIds, "AUG-010");
 }
 
 function groupPieces(engine: GameEngineState, userId: string, groupId: string) {
@@ -334,8 +334,8 @@ export function isGroupUsableWithAugments(
   setups: PlayerAugmentSetups = {},
 ) {
   if (isTurtleGroupLocked(engine, userId, groupId)) return false;
-  if (!has(ownedIds, "P14")) return true;
-  const representativeId = setups.P14?.pieceId;
+  if (!has(ownedIds, "AUG-041")) return true;
+  const representativeId = setups["AUG-041"]?.pieceId;
   if (!representativeId) return false;
   return groupPieces(engine, userId, groupId).some((piece) => piece.id === representativeId);
 }
@@ -378,25 +378,25 @@ export function movementBonusForGroup(
   const representative: PieceState | undefined = group[0];
   if (!player || !representative) return 0;
   let bonus = 0;
-  if (has(ownedIds, "S13") && engine.augmentRuntime?.[userId]?.vacancyInitialized && (engine.augmentRuntime?.[userId]?.vacancySkipsRemaining ?? 2) <= 0) bonus += 1;
-  if (has(ownedIds, "G15") && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)) {
+  if (has(ownedIds, "AUG-013") && engine.augmentRuntime?.[userId]?.vacancyInitialized && (engine.augmentRuntime?.[userId]?.vacancySkipsRemaining ?? 2) <= 0) bonus += 1;
+  if (has(ownedIds, "AUG-029") && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)) {
     const runtime = engine.augmentRuntime?.[userId];
     if (runtime?.athleteAcceleratingGroupId === groupId) {
       bonus += Math.min(2, runtime.athleteConsecutiveMoves ?? 0);
     }
   }
-  if (has(ownedIds, "A12") && representative.status === "ON_BOARD" && representative.node != null) {
+  if (has(ownedIds, "AUG-055") && representative.status === "ON_BOARD" && representative.node != null) {
     const segment = engine.augmentRuntime?.[userId]?.walkingTrailSegment;
     if (segment != null && WALKING_TRAIL_SEGMENTS[segment]?.has(representative.node)) bonus += 1;
   }
-  if (has(ownedIds, "S06") && representative.status === "WAITING") bonus += 2;
-  if (has(ownedIds, "S08") && player.pieces.filter((piece) => piece.status === "FINISHED").length === 3) bonus += 1;
-  if (has(ownedIds, "S14") && engine.augmentRuntime?.[userId]?.junctionBoostGroups?.[groupId]) bonus += 1;
-  if (has(ownedIds, "G07") && !isSoloJunctionGroup(engine, userId, groupId) && hasAnySoloJunctionHolder(engine, userId)) bonus += 1;
-  if (has(ownedIds, "P15") && group.length >= 2) bonus += group.length - 1;
-  else if (has(ownedIds, "G08") && group.length >= 2) bonus += 1;
-  const acePieceId = setups.G16?.pieceId;
-  if (has(ownedIds, "G16") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+  if (has(ownedIds, "AUG-006") && representative.status === "WAITING") bonus += 2;
+  if (has(ownedIds, "AUG-008") && player.pieces.filter((piece) => piece.status === "FINISHED").length === 3) bonus += 1;
+  if (has(ownedIds, "AUG-014") && engine.augmentRuntime?.[userId]?.junctionBoostGroups?.[groupId]) bonus += 1;
+  if (has(ownedIds, "AUG-022") && !isSoloJunctionGroup(engine, userId, groupId) && hasAnySoloJunctionHolder(engine, userId)) bonus += 1;
+  if (has(ownedIds, "AUG-065") && group.length >= 2) bonus += group.length - 1;
+  else if (has(ownedIds, "AUG-023") && group.length >= 2) bonus += 1;
+  const acePieceId = setups["AUG-030"]?.pieceId;
+  if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
   return bonus;
 }
 
@@ -407,7 +407,7 @@ export function recordAthleteAccelerationMove(
   result: RollToken,
   ownedIds: string[],
 ) {
-  if (!has(ownedIds, "G15")) return;
+  if (!has(ownedIds, "AUG-029")) return;
   if (!["DO", "GAE", "GEOL", "YUT", "MO", "BACKDO"].includes(result.face)) return;
   const runtime = runtimeForPlayer(engine, userId);
   if (runtime.athleteAcceleratingGroupId === groupId) {
@@ -424,7 +424,7 @@ export function resetAthleteAccelerationForGroup(
   groupId: string,
   ownedIds: string[],
 ) {
-  if (!has(ownedIds, "G15")) return;
+  if (!has(ownedIds, "AUG-029")) return;
   const runtime = engine.augmentRuntime?.[userId];
   if (runtime?.athleteAcceleratingGroupId !== groupId) return;
   delete runtime.athleteAcceleratingGroupId;
@@ -479,7 +479,7 @@ export function adjustedResultForGroup(
   ownedIds: string[],
   setups: PlayerAugmentSetups = {},
 ): RollToken {
-  const forbidShortcuts = has(ownedIds, "P10");
+  const forbidShortcuts = has(ownedIds, "AUG-037");
   const plaguePenalty = 0;
   if (isGroupMoveFixedToOne(engine, userId, groupId)) {
     return { ...result, finalSteps: result.face === "BACKDO" ? -1 : 1 - plaguePenalty, forbidShortcuts };
@@ -513,13 +513,13 @@ export function transferFixedOneOnStack(engine: GameEngineState, userId: string,
 }
 
 export function consumeJunctionBoostForForwardMove(engine: GameEngineState, userId: string, groupId: string, result: RollToken, ownedIds: string[]) {
-  if (result.face === "BACKDO" || !has(ownedIds, "S14")) return;
+  if (result.face === "BACKDO" || !has(ownedIds, "AUG-014")) return;
   const boosts = engine.augmentRuntime?.[userId]?.junctionBoostGroups;
   if (boosts?.[groupId]) delete boosts[groupId];
 }
 
 export function armJunctionBoostAtDestination(engine: GameEngineState, userId: string, groupId: string, destination: number, ownedIds: string[]) {
-  if (!has(ownedIds, "S14") || !JUNCTION_NODES.has(destination)) return;
+  if (!has(ownedIds, "AUG-014") || !JUNCTION_NODES.has(destination)) return;
   const runtime = runtimeForPlayer(engine, userId);
   runtime.junctionBoostGroups ??= {};
   runtime.junctionBoostGroups[groupId] = true;
@@ -561,17 +561,17 @@ export function clearPathControlForGroup(engine: GameEngineState, userId: string
 export function armPathControlAtDestination(engine: GameEngineState, userId: string, groupId: string, destination: number, ownedIds: string[]) {
   if (!JUNCTION_NODES.has(destination)) return;
   const runtime = runtimeForPlayer(engine, userId);
-  if (has(ownedIds, "P13")) {
+  if (has(ownedIds, "AUG-040")) {
     runtime.sanctuaryGroups ??= {};
     runtime.sanctuaryGroups[groupId] = destination;
     runtime.sanctuaryPassBlocks ??= {};
     runtime.sanctuaryPassBlocks[groupId] = true;
   }
-  if (has(ownedIds, "G06")) {
+  if (has(ownedIds, "AUG-021")) {
     runtime.alleyBlockades ??= {};
     runtime.alleyBlockades[groupId] = destination;
   }
-  if (has(ownedIds, "P04") && destination === 15) {
+  if (has(ownedIds, "AUG-033") && destination === 15) {
     runtime.universeCenterGroups ??= {};
     runtime.universeCenterGroups[groupId] = true;
   }
@@ -686,7 +686,7 @@ export function chaseTargetsOnPath(engine: GameEngineState, moverUserId: string,
 }
 
 export function cleanerMovesRemaining(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "P06")) return 0;
+  if (!has(ownedIds, "AUG-034")) return 0;
   return Math.max(0, 4 - (engine.augmentRuntime?.[userId]?.cleanerMovesUsed ?? 0));
 }
 
@@ -707,7 +707,7 @@ export function stackAugmentExtraRolls(
   stack: boolean,
   ownedIds: string[],
 ) {
-  if (!stack || !has(ownedIds, "S02")) return 0;
+  if (!stack || !has(ownedIds, "AUG-002")) return 0;
   const runtime = runtimeForPlayer(engine, userId);
   runtime.piggybackStackCount = (runtime.piggybackStackCount ?? 0) + 1;
   return runtime.piggybackStackCount % 4 === 0 ? 1 : 0;
@@ -718,7 +718,7 @@ export function isCaptureImmune(_engine: GameEngineState, _userId: string, _owne
 }
 
 export function consumeBreakthroughCaptureBlock(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "S04")) return false;
+  if (!has(ownedIds, "AUG-004")) return false;
   const runtime = runtimeForPlayer(engine, userId);
   const remaining = runtime.breakthroughBlocksRemaining ?? 0;
   if (remaining <= 0) return false;
@@ -727,39 +727,39 @@ export function consumeBreakthroughCaptureBlock(engine: GameEngineState, userId:
 }
 
 export function recordCaptureAgainstPlayer(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "S04") && !has(ownedIds, "S07") && !has(ownedIds, "S11")) return;
+  if (!has(ownedIds, "AUG-004") && !has(ownedIds, "AUG-007") && !has(ownedIds, "AUG-011")) return;
   const runtime = runtimeForPlayer(engine, userId);
-  if (has(ownedIds, "S04")) {
+  if (has(ownedIds, "AUG-004")) {
     runtime.timesCaptured = (runtime.timesCaptured ?? 0) + 1;
     if (runtime.timesCaptured === 5) runtime.breakthroughBlocksRemaining = 2;
   }
-  if (has(ownedIds, "S07")) runtime.revengeBasicPending = true;
-  if (has(ownedIds, "S11")) runtime.counterRollPending = true;
+  if (has(ownedIds, "AUG-007")) runtime.revengeBasicPending = true;
+  if (has(ownedIds, "AUG-011")) runtime.counterRollPending = true;
 }
 
 export function blocksCaptureExtraRoll(groupSize: number, ownedIds: string[]) {
-  return groupSize >= 2 && has(ownedIds, "S05");
+  return groupSize >= 2 && has(ownedIds, "AUG-005");
 }
 
 export function applyWaterGhostOne(engine: GameEngineState, attackerUserId: string, attackerGroupId: string, victimOwnedIds: string[]) {
-  if (!has(victimOwnedIds, "G12")) return;
+  if (!has(victimOwnedIds, "AUG-027")) return;
   const runtime = runtimeForPlayer(engine, attackerUserId);
   runtime.fixedOneGroups ??= {};
   runtime.fixedOneGroups[attackerGroupId] = true;
 }
 
 export function shouldReturnAttackerWithWaterGhostTwo(victimOwnedIds: string[]) {
-  return has(victimOwnedIds, "P07");
+  return has(victimOwnedIds, "AUG-064");
 }
 
 export function recordEnemyCaptures(engine: GameEngineState, userId: string, captureCount: number, ownedIds: string[]) {
-  if (captureCount <= 0 || !has(ownedIds, "P16")) return;
+  if (captureCount <= 0 || !has(ownedIds, "AUG-042")) return;
   const runtime = runtimeForPlayer(engine, userId);
   runtime.enemyCaptureCount = (runtime.enemyCaptureCount ?? 0) + captureCount;
 }
 
 export function replacesNormalWinCondition(ownedIds: string[]) {
-  return ownedIds.some((id) => id === "P03" || id === "P04" || id === "P14" || id === "P16");
+  return ownedIds.some((id) => id === "AUG-032" || id === "AUG-033" || id === "AUG-041" || id === "AUG-042");
 }
 
 export function huntCaptureTarget(playerCount: number) {
@@ -773,7 +773,7 @@ export function specialWinForPlayer(engine: GameEngineState, userId: string, own
   const player = engine.players.find((candidate) => candidate.userId === userId);
   if (!player) return null;
 
-  if (has(ownedIds, "P03") || has(ownedIds, "P04") || has(ownedIds, "P16")) {
+  if (has(ownedIds, "AUG-032") || has(ownedIds, "AUG-033") || has(ownedIds, "AUG-042")) {
     const finished = player.pieces.filter((piece) => piece.status === "FINISHED");
     if (finished.length > 0) {
       for (const piece of finished) {
@@ -785,16 +785,16 @@ export function specialWinForPlayer(engine: GameEngineState, userId: string, own
     }
   }
 
-  if (has(ownedIds, "P16")) {
+  if (has(ownedIds, "AUG-042")) {
     const count = engine.augmentRuntime?.[userId]?.enemyCaptureCount ?? 0;
     const target = huntCaptureTarget(engine.players.length);
     if (count >= target) return { condition: "HUNT", message: `${player.displayName}: 추노 ${target}회 달성!` };
   }
-  if (has(ownedIds, "P03")) {
+  if (has(ownedIds, "AUG-032")) {
     const occupied = new Set(player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.node != null).map((piece) => piece.node as number));
     if (FOUR_GUARDIAN_NODES.every((node) => occupied.has(node))) return { condition: "FOUR_GUARDIANS", message: `${player.displayName}: 사방신 완성!` };
   }
-  if (has(ownedIds, "P04")) {
+  if (has(ownedIds, "AUG-033")) {
     const centerPieces = player.pieces.filter((piece) => piece.status === "ON_BOARD" && piece.node === 15);
     if (centerPieces.length === 4 && new Set(centerPieces.map((piece) => piece.groupId)).size === 1) {
       return { condition: "CENTER_STACK", message: `${player.displayName}: 우주의 중심 완성!` };

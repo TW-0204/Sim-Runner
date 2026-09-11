@@ -50,7 +50,7 @@ function discardUnusableBackdos(
 }
 
 /**
- * Roll-choice helpers such as S12 can create a result without going through
+ * Roll-choice helpers such as AUG-012 can create a result without going through
  * engine.applyRoll's normal settle path. Keep those paths consistent with the
  * authoritative engine: finish pending rolls first, discard an all-BACKDO pool
  * when no piece is on board, then either enter MOVING or advance the turn.

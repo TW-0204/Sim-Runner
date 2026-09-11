@@ -33,8 +33,8 @@ const seeds = [
   engine.pendingRolls = [];
   engine.results = [backdoToken()];
 
-  discardUnusableResults(engine, ["G13"]);
-  assert.equal(engine.results.length, 0, "restored G13 BACKDO must expire when every piece is WAITING");
+  discardUnusableResults(engine, ["AUG-028"]);
+  assert.equal(engine.results.length, 0, "restored AUG-028 BACKDO must expire when every piece is WAITING");
 }
 
 {
@@ -49,7 +49,7 @@ const seeds = [
   engine.pendingRolls = [];
   engine.results = [backdoToken()];
 
-  discardUnusableResults(engine, ["G13"]);
+  discardUnusableResults(engine, ["AUG-028"]);
   assert.equal(engine.results.length, 1, "BACKDO must remain when an on-board group can use it");
 }
 
@@ -59,7 +59,7 @@ const seeds = [
   engine.pendingRolls = [];
   engine.results = [backdoToken(), doToken()];
 
-  discardUnusableResults(engine, ["G13"]);
+  discardUnusableResults(engine, ["AUG-028"]);
   assert.equal(engine.results.length, 2, "cleanup must not discard BACKDO while another usable forward result exists");
 }
 

@@ -31,7 +31,7 @@ export function activatePlagueTurnIfNeeded(engineInput: GameEngineState): GameEn
   return engine;
 }
 
-/** Applies one due mandatory augment event in effective-v11 order: A07 before A01. */
+/** Applies one due mandatory augment event in effective-v11 order: AUG-050 before AUG-045. */
 export function resolveDueAutomaticAugmentEvent(
   engineInput: GameEngineState,
   ownedByUser: Record<string, string[]>,
@@ -39,7 +39,7 @@ export function resolveDueAutomaticAugmentEvent(
 ): AutomaticAugmentEvent {
   if (engineInput.round >= 6) {
     const bombOwners = engineInput.players
-      .filter((player) => (ownedByUser[player.userId] ?? []).includes("A07"))
+      .filter((player) => (ownedByUser[player.userId] ?? []).includes("AUG-050"))
       .filter((player) => !engineInput.augmentRuntime?.[player.userId]?.bombResolved)
       .map((player) => player.userId);
     if (bombOwners.length > 0) {
@@ -53,7 +53,7 @@ export function resolveDueAutomaticAugmentEvent(
   }
 
   for (const player of engineInput.players) {
-    if (!(ownedByUser[player.userId] ?? []).includes("A01")) continue;
+    if (!(ownedByUser[player.userId] ?? []).includes("AUG-045")) continue;
     const runtime = engineInput.augmentRuntime?.[player.userId];
     if (runtime?.gravityExplosionRound == null || engineInput.round < runtime.gravityExplosionRound) continue;
     return {
@@ -87,7 +87,7 @@ export function resolveVacancyTurn(
   engineInput: GameEngineState,
   ownedIds: string[],
 ): { engine: GameEngineState; applied: boolean } {
-  if (engineInput.stage !== "AWAITING_ROLL" || engineInput.pendingRolls[0] !== "BASIC" || !ownedIds.includes("S13")) {
+  if (engineInput.stage !== "AWAITING_ROLL" || engineInput.pendingRolls[0] !== "BASIC" || !ownedIds.includes("AUG-013")) {
     return { engine: engineInput, applied: false };
   }
   const player = currentPlayer(engineInput);
@@ -129,7 +129,7 @@ export function injectBombBonusRolls(
   userId: string,
   ownedIds: string[],
 ): GameEngineState {
-  if (!ownedIds.includes("A07") || engineInput.stage !== "AWAITING_ROLL") return engineInput;
+  if (!ownedIds.includes("AUG-050") || engineInput.stage !== "AWAITING_ROLL") return engineInput;
   const pending = engineInput.augmentRuntime?.[userId]?.bombBonusRollsPending ?? 0;
   if (pending <= 0) return engineInput;
   const engine = clone(engineInput);
@@ -162,7 +162,7 @@ export function resolveS16Nak(
   random: () => number,
   createCompensationTokenId: () => string,
 ): S16NakResolution {
-  const nakActive = Object.values(ownedByUser).some((ids) => ids.includes("S16"));
+  const nakActive = Object.values(ownedByUser).some((ids) => ids.includes("AUG-016"));
   if (engineInput.pendingRolls[0] !== "BASIC" || !nakActive) {
     return { engine: engineInput, checked: false, occurred: false };
   }
@@ -173,11 +173,11 @@ export function resolveS16Nak(
   engine.pendingRolls.shift();
   const actorName = currentPlayer(engine).displayName;
 
-  if (!owned.includes("S16") && engine.pendingRolls.length === 0) {
+  if (!owned.includes("AUG-016") && engine.pendingRolls.length === 0) {
     discardUnusableResults(engine, owned, setups);
   }
 
-  if (owned.includes("S16")) {
+  if (owned.includes("AUG-016")) {
     engine.results.push({
       id: createCompensationTokenId(),
       face: "MOVE1",

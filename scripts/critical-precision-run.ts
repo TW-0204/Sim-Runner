@@ -26,11 +26,11 @@ const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 30);
 const outputDir = argument("output-dir") ?? "critical-precision-results";
 
 const specialConditions: Record<string, string> = {
-  P02: "MOONWALK",
-  P03: "FOUR_GUARDIANS",
-  P04: "CENTER_STACK",
-  P14: "SOLO_RUN",
-  P16: "HUNT",
+  "AUG-031": "MOONWALK",
+  "AUG-032": "FOUR_GUARDIANS",
+  "AUG-033": "CENTER_STACK",
+  "AUG-041": "SOLO_RUN",
+  "AUG-042": "HUNT",
 };
 
 type IncompleteDetail = {
@@ -223,7 +223,7 @@ const startedAt = Date.now();
     `- max rounds: ${maxRounds} (DRAW after cap)`,
     `- valid games per slot/player-count context: ${games}`,
     "- canonical acquisition flow is used directly; forcing is passed as simulation input",
-    "- A10 is forced only when the owner still has a WAITING piece; invalid contexts are discarded",
+    "- AUG-053 is forced only when the owner still has a WAITING piece; invalid contexts are discarded",
     "",
     "| Slot | Players | Win | Delta | Draw | Incomplete | Avg triggers | Special-condition win | Discarded |",
     "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",

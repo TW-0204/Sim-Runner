@@ -15,7 +15,7 @@ function positiveInteger(name: string, value: string | undefined, fallback: numb
 
 const games = positiveInteger("games", argument("games"), 1_000);
 const outputDir = argument("output-dir") ?? "precision-results/s16";
-const augmentId = "S16";
+const augmentId = "AUG-016";
 const acquisitionIndex = 1;
 const rulesetId = "two-aug-start-r4-special-slots-v2";
 
@@ -133,7 +133,7 @@ const startedAt = Date.now();
       if (result.winnerSeat === forcedSeat) wins += 1;
 
       const telemetry = result.s16Telemetry;
-      if (!telemetry) throw new Error("S16 telemetry missing from simulation result.");
+      if (!telemetry) throw new Error("AUG-016 telemetry missing from simulation result.");
       let gameNak = 0;
       for (let seat = 1; seat <= playerCount; seat += 1) {
         const userId = `sim-p${seat}`;
@@ -155,7 +155,7 @@ const startedAt = Date.now();
     }
 
     if (validGames < games) {
-      throw new Error(`S16 ${playerCount}p only produced ${validGames}/${games} valid contexts after ${attempts} attempts.`);
+      throw new Error(`AUG-016 ${playerCount}p only produced ${validGames}/${games} valid contexts after ${attempts} attempts.`);
     }
 
     const ownerWinRate = completedGames > 0 ? wins / completedGames : 0;
@@ -214,14 +214,14 @@ const incompleteMarkdown = allIncompleteDetails.length > 0
     ))
   : ["- none"];
 const markdown = [
-  "# S16 Nak Precision",
+  "# AUG-016 Nak Precision",
   "",
   `- ruleset: ${rulesetId}`,
-  `- S16 forced at acquisition index ${acquisitionIndex}`,
+  `- AUG-016 forced at acquisition index ${acquisitionIndex}`,
   `- valid games: ${games.toLocaleString()} per player count, ${(games * 3).toLocaleString()} total`,
   "- forced owner seat rotates every seed to reduce seat bias",
-  "- games with another S16 owner are discarded",
-  "- Nak denominator counts BASIC rolls only while S16 is active",
+  "- games with another AUG-016 owner are discarded",
+  "- Nak denominator counts BASIC rolls only while AUG-016 is active",
   "",
   "| Players | Owner win | Baseline | Delta | Actual Nak rate | Nak / game | Owner Nak / game | Non-owner Nak / player-game | No-Nak games | 3+ Nak games | Incomplete | Discarded |",
   "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",

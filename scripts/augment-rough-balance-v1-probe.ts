@@ -21,7 +21,7 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
   engine.results = [{ id: tokenId, face, baseSteps: steps, finalSteps: steps, source: "BASIC" }];
 }
 
-// A10: transfer still creates the intended 3-piece vs 5-piece ownership state.
+// AUG-053: transfer still creates the intended 3-piece vs 5-piece ownership state.
 {
   const start = fresh();
   const betrayal = applyBetrayalTransfer(start, "p1", () => 0);
@@ -62,7 +62,7 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
     transferred,
     token,
     [],
-    { p1: ["A10"], p2: [] },
+    { p1: ["AUG-053"], p2: [] },
   ).find((candidate) => candidate.finished);
   assert.ok(target, "node 29 + DO should expose a finish target");
 
@@ -71,7 +71,7 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
     { groupId: transferred.groupId, resultId: token.id, forwardPath: target.path },
     [],
     {},
-    { p1: ["A10"], p2: [] },
+    { p1: ["AUG-053"], p2: [] },
   );
   const nextP1 = next.players.find((player) => player.userId === "p1")!;
   const nextP2 = next.players.find((player) => player.userId === "p2")!;
@@ -88,13 +88,13 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
   assert.equal(next.winnerUserId, "p2");
 }
 
-// A10 x A08: direct FINISHED assignment by Great Upheaval also returns a completed betrayed piece.
+// AUG-053 x AUG-051: direct FINISHED assignment by Great Upheaval also returns a completed betrayed piece.
 {
   const betrayal = applyBetrayalTransfer(fresh(), "p1", () => 0);
   const next = applyGreatUpheaval(
     betrayal.engine,
     "p1",
-    { p1: ["A10", "A08"], p2: [] },
+    { p1: ["AUG-053", "AUG-051"], p2: [] },
     () => 0.99,
   );
   const p1 = next.players.find((player) => player.userId === "p1")!;
@@ -108,7 +108,7 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
   assert.equal(p2.pieces.every((piece) => piece.status === "FINISHED"), true);
 }
 
-// A14: forward penalty is now exactly -3, while BACKDO remains unaffected.
+// AUG-057: forward penalty is now exactly -3, while BACKDO remains unaffected.
 {
   const cases: Array<[RollFace, number, number]> = [
     ["DO", 1, -2],
@@ -146,4 +146,4 @@ function setMovement(engine: ReturnType<typeof fresh>, face: RollFace, steps: nu
   assert.equal(next.augmentRuntime?.p1?.plaguePieceIds?.[piece.id], undefined);
 }
 
-console.log("[augment-rough-balance-v1-probe] PASS: A10 finish-return and A14 -3 validated.");
+console.log("[augment-rough-balance-v1-probe] PASS: AUG-053 finish-return and AUG-057 -3 validated.");

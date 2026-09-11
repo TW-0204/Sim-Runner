@@ -19,7 +19,7 @@ export function splitNumberResult(
   firstSteps: number,
   ownedIds: string[],
 ) {
-  if (!ownedIds.includes("G09") || ownedIds.includes("P05")) {
+  if (!ownedIds.includes("AUG-024") || ownedIds.includes("AUG-063")) {
     throw new Error("칸은 숫자에 불과하다 1을 사용할 수 없습니다.");
   }
   if (engineInput.stage !== "MOVING") throw new Error("이동 결과가 있을 때만 나눌 수 있습니다.");
@@ -76,12 +76,12 @@ function hasEligibleDistinctGroup(
 }
 
 function discardUnusableSplitResults(engineInput: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("G09") || ownedIds.includes("P05")) return engineInput;
+  if (!ownedIds.includes("AUG-024") || ownedIds.includes("AUG-063")) return engineInput;
   const constrained = engineInput.results.filter((result) => result.numericBatchId && result.forbiddenPieceIds?.length);
   if (!constrained.length) return engineInput;
 
   const engine = structuredClone(engineInput);
-  const moonwalk = ownedIds.includes("P02");
+  const moonwalk = ownedIds.includes("AUG-031");
   const discardIds = new Set<string>();
   for (const result of constrained) {
     if (!result.forbiddenPieceIds?.length) continue;
@@ -102,7 +102,7 @@ export function normalizeNumberPool(
   ownedIds: string[],
 ) {
   const splitNormalized = discardUnusableSplitResults(engineInput, userId, ownedIds);
-  if (!ownedIds.includes("P05") || splitNormalized.stage !== "MOVING") return splitNormalized;
+  if (!ownedIds.includes("AUG-063") || splitNormalized.stage !== "MOVING") return splitNormalized;
   const normalPositive = splitNormalized.results.filter((result) => (
     result.face !== "BACKDO"
     && result.finalSteps > 0
@@ -133,7 +133,7 @@ export function allocateNumberPool(
   steps: number,
   ownedIds: string[],
 ) {
-  if (!ownedIds.includes("P05")) throw new Error("칸은 숫자에 불과하다 2를 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-063")) throw new Error("칸은 숫자에 불과하다 2를 보유하고 있지 않습니다.");
   if (engineInput.stage !== "MOVING") throw new Error("지금은 숫자 이동권을 만들 수 없습니다.");
   if (!Number.isInteger(steps) || steps < 1) throw new Error("꺼낼 이동량이 올바르지 않습니다.");
 

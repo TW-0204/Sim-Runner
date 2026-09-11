@@ -132,10 +132,10 @@ function restoreOneInsuredPiece(after: GameEngineState, beforePieces: PieceState
 }
 
 function nextNodesAfterDestination(destination: number, result: RollToken, ownedIds: string[]) {
-  const forbidShortcutEntry = result.forbidShortcuts || ownedIds.includes("P10");
-  const allowPassingShortcutEntry = ownedIds.includes("P09");
+  const forbidShortcutEntry = result.forbidShortcuts || ownedIds.includes("AUG-037");
+  const allowPassingShortcutEntry = ownedIds.includes("AUG-036");
 
-  if (ownedIds.includes("P02")) {
+  if (ownedIds.includes("AUG-031")) {
     if (result.face === "BACKDO") {
       const options = forwardMoveOptions(destination, 1, { forbidShortcutEntry, allowPassingShortcutEntry });
       return options.filter((move) => !move.finished && move.node != null).map((move) => move.node as number);
@@ -240,12 +240,12 @@ export function maybePauseCaptureChoices(
     const victim = beforePieces[0];
     if (!victim || beforePieces.length < 2) continue;
     const victimOwned = args.ownedByUser[victim.ownerUserId] ?? [];
-    if (!victimOwned.includes("G11")) continue;
+    if (!victimOwned.includes("AUG-026")) continue;
     restoreOneInsuredPiece(after, beforePieces);
   }
 
   const attackerOwned = args.ownedByUser[args.attackerUserId] ?? [];
-  if (attackerOwned.includes("P08") && destinationCaptured.length > 0) {
+  if (attackerOwned.includes("AUG-035") && destinationCaptured.length > 0) {
     const attacker = playerFor(after, args.attackerUserId);
     const attackerStillAtDestination = attacker?.pieces.some((piece) => (
       piece.id === movement.physicalPieceId && piece.status === "ON_BOARD" && piece.node === destination
@@ -357,7 +357,7 @@ function captureDoubleHitTarget(
   if (isSanctuaryGroup(engine, target.victimUserId, target.victimGroupId, target.node)) throw new Error("성역의 말은 잡을 수 없습니다.");
   if (isCaptureImmune(engine, target.victimUserId, victimOwned)) throw new Error("잡기 면역 상태의 말입니다.");
 
-  const insuredOriginals = victimOwned.includes("G11") && pieces.length >= 2
+  const insuredOriginals = victimOwned.includes("AUG-026") && pieces.length >= 2
     ? pieces.map((piece) => structuredClone(piece))
     : null;
 
@@ -375,7 +375,7 @@ function captureDoubleHitTarget(
   clearPlagueForGroup(engine, target.victimUserId, target.victimGroupId);
   returnPiecesAfterEnemyCapture(pieces, victimOwned);
   const attackerOwned = ownedByUser[decision.attackerUserId] ?? [];
-  if (attackerOwned.includes("A14")) infectPlaguePieceIds(engine, target.victimUserId, capturedPieceIds);
+  if (attackerOwned.includes("AUG-057")) infectPlaguePieceIds(engine, target.victimUserId, capturedPieceIds);
   recordEnemyCaptures(engine, decision.attackerUserId, 1, attackerOwned);
   if (attackerReturned) {
     returnAttackerAfterEnemyEffect(engine, decision.attackerUserId, decision.attackerGroupId, attackerOwned);
@@ -425,7 +425,7 @@ export function applyCaptureChoice(
       for (const piece of remaining) piece.groupId = replacementGroupId;
     }
 
-    const returnLabel = (ownedByUser[decision.victimUserId] ?? []).includes("P02") ? "문워크 출발점" : "대기";
+    const returnLabel = (ownedByUser[decision.victimUserId] ?? []).includes("AUG-031") ? "문워크 출발점" : "대기";
     message = `보험 들었습니다 · 말 ${pieceId.split("-")[1] ?? pieceId}만 ${returnLabel}로 복귀`;
   } else {
     const targetKey = typeof choice.targetKey === "string" && choice.targetKey ? choice.targetKey : null;

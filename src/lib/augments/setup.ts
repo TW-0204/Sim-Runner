@@ -30,7 +30,7 @@ export function isValidPieceSetup(seat: number, payload: unknown): payload is Pi
 /**
  * Returns every piece currently referenced by a registered piece-setup augment.
  * Simulator/client policy can use this generically (for example, avoid voluntarily
- * sacrificing a referenced piece) without knowing augment IDs such as G16/P14.
+ * sacrificing a referenced piece) without knowing augment IDs such as AUG-030/AUG-041.
  */
 export function referencedSetupPieceIds(setups: PlayerAugmentSetups | undefined) {
   const ids = new Set<string>();

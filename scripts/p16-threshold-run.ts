@@ -33,16 +33,16 @@ const originalGameSource = readFileSync(gamePath, "utf-8");
 const originalEffectsSource = readFileSync(effectsPath, "utf-8");
 
 const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceP16 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceP16 ? \"P16\" : context.rng.augment.pick(visible);`;
+const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForceP16 = eventIndex === 0 && player.seat === forcedSeat;\n      const selectedId = shouldForceP16 ? \"AUG-042\" : context.rng.augment.pick(visible);`;
 
 const targetBlock = `export function huntCaptureTarget(playerCount: number) {\n  return 4 + playerCount;\n}`;
 const replacementTargetBlock = `export function huntCaptureTarget(playerCount: number) {\n  if (playerCount === 2) return ${targets[0]};\n  if (playerCount === 3) return ${targets[1]};\n  if (playerCount === 4) return ${targets[2]};\n  return ${targets[2]};\n}`;
 
 if (!originalGameSource.includes(selectionBlock)) {
-  throw new Error("Could not locate augment-selection block. P16 threshold experiment aborted.");
+  throw new Error("Could not locate augment-selection block. AUG-042 threshold experiment aborted.");
 }
 if (!originalEffectsSource.includes(targetBlock)) {
-  throw new Error("Could not locate huntCaptureTarget block. P16 threshold experiment aborted.");
+  throw new Error("Could not locate huntCaptureTarget block. AUG-042 threshold experiment aborted.");
 }
 
 writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
@@ -100,7 +100,7 @@ try {
 
       const forcedSeat = seed % playerCount + 1;
       const forcedUserId = `sim-p${forcedSeat}`;
-      const p16Acquisitions = result.acquisitions.filter((item) => item.augmentId === "P16");
+      const p16Acquisitions = result.acquisitions.filter((item) => item.augmentId === "AUG-042");
       const forcedAcquisition = p16Acquisitions.some((item) => item.userId === forcedUserId && item.acquisitionIndex === 1);
       const duplicateP16Owner = p16Acquisitions.some((item) => item.userId !== forcedUserId);
       if (!forcedAcquisition || duplicateP16Owner) continue;
@@ -146,7 +146,7 @@ try {
 }
 
 const report = {
-  augmentId: "P16",
+  augmentId: "AUG-042",
   targets: { 2: targets[0], 3: targets[1], 4: targets[2] },
   rulesetId,
   gamesPerPlayerCount: games,
@@ -159,13 +159,13 @@ const report = {
 const pct = (value: number) => `${(value * 100).toFixed(2)}%`;
 const pp = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(2)}%p`;
 const markdown = [
-  `# P16 Threshold Precision — ${targets.join("/")}`,
+  `# AUG-042 Threshold Precision — ${targets.join("/")}`,
   "",
   `- ruleset: ${rulesetId}`,
   `- capture targets: 2p=${targets[0]}, 3p=${targets[1]}, 4p=${targets[2]}`,
   `- valid games: ${games.toLocaleString()} per player count, ${(games * 3).toLocaleString()} total`,
-  "- P16 owner seat rotates every seed",
-  "- contexts with another P16 owner are discarded",
+  "- AUG-042 owner seat rotates every seed",
+  "- contexts with another AUG-042 owner are discarded",
   "- source files are patched only inside the runner checkout and restored before exit",
   "",
   "| Players | Target | Owner win | Baseline | Delta | HUNT wins | Avg round | Incomplete | Discarded |",

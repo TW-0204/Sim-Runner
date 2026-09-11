@@ -24,11 +24,11 @@ const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 30);
 const outputDir = argument("output-dir") ?? "precision-all-results";
 
 const specialConditions: Record<string, string> = {
-  P02: "MOONWALK",
-  P03: "FOUR_GUARDIANS",
-  P04: "CENTER_STACK",
-  P14: "SOLO_RUN",
-  P16: "HUNT",
+  "AUG-031": "MOONWALK",
+  "AUG-032": "FOUR_GUARDIANS",
+  "AUG-033": "CENTER_STACK",
+  "AUG-041": "SOLO_RUN",
+  "AUG-042": "HUNT",
 };
 
 type Report = {

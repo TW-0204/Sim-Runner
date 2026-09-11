@@ -46,8 +46,8 @@ function a16Targets(finishedCount: number, node: number, face: RollToken["face"]
     "p1",
     mover,
     token(face, steps),
-    ["A16"],
-    { p1: ["A16"], p2: [] },
+    ["AUG-059"],
+    { p1: ["AUG-059"], p2: [] },
   );
 }
 
@@ -79,14 +79,14 @@ function a16Targets(finishedCount: number, node: number, face: RollToken["face"]
   assert.ok(thirdTrim.some((target) => target.finished));
 }
 
-// A08 assigns FINISHED directly. P04/P16 replace normal victory, so those
+// AUG-051 assigns FINISHED directly. AUG-033/AUG-042 replace normal victory, so those
 // generated FINISHED states must be normalized through their special-win lifecycle.
 {
   const engine = engine2();
   const next = applyGreatUpheaval(
     engine,
     "p2",
-    { p1: ["P04"], p2: ["P16", "A08"] },
+    { p1: ["AUG-033"], p2: ["AUG-042", "AUG-051"] },
     {},
     () => 0.99,
   );

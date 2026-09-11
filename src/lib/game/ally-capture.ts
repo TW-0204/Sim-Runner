@@ -12,7 +12,7 @@ export function applyLoneWolfAllyCapture(
   engineInput: GameEngineState,
   ownedIds: string[] = [],
 ): GameEngineState {
-  if (!ownedIds.includes("P17")) throw new Error("독불장군 증강을 보유하고 있지 않습니다.");
+  if (!ownedIds.includes("AUG-043")) throw new Error("독불장군 증강을 보유하고 있지 않습니다.");
   if (engineInput.stage !== "STACK_CHOICE" || !engineInput.pendingStackChoice) {
     throw new Error("지금은 아군 말을 잡을 수 없습니다.");
   }

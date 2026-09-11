@@ -15,9 +15,9 @@ function sequenceRandom(values: number[]) {
   return () => values[index++] ?? 0;
 }
 
-// 1) A08 is Prism and second-augment only.
+// 1) AUG-051 is Prism and second-augment only.
 {
-  const augment = AUGMENT_BY_ID.get("A08");
+  const augment = AUGMENT_BY_ID.get("AUG-051");
   assert.equal(augment?.tier, "prism");
   assert.equal(augment?.timing, "last");
 }
@@ -55,7 +55,7 @@ function sequenceRandom(values: number[]) {
     0.10,       // p2-4 -> WAITING
   ]);
 
-  const next = applyGreatUpheaval(engine, "p1", { p1: ["A08"], p2: [] }, random);
+  const next = applyGreatUpheaval(engine, "p1", { p1: ["AUG-051"], p2: [] }, random);
   const n1 = next.players[0];
   const n2 = next.players[1];
 
@@ -79,14 +79,14 @@ function sequenceRandom(values: number[]) {
 }
 
 // 3) If the reshuffle itself completes normal wins, resolve immediately.
-// In the extremely rare simultaneous case, the A08 owner wins the tie.
+// In the extremely rare simultaneous case, the AUG-051 owner wins the tie.
 {
   const engine = fresh(2);
-  const next = applyGreatUpheaval(engine, "p2", { p1: [], p2: ["A08"] }, () => 0.99);
+  const next = applyGreatUpheaval(engine, "p2", { p1: [], p2: ["AUG-051"] }, () => 0.99);
   assert.ok(next.players.every((player) => player.pieces.every((piece) => piece.status === "FINISHED")));
   assert.equal(next.winnerUserId, "p2");
   assert.equal(next.winnerCondition, "NORMAL");
   assert.equal(next.stage, "FINISHED");
 }
 
-console.log("[batch10-probe] PASS: A08 Great Upheaval mechanics validated.");
+console.log("[batch10-probe] PASS: AUG-051 Great Upheaval mechanics validated.");

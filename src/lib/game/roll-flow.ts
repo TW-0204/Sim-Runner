@@ -20,7 +20,7 @@ function has(ownedIds: string[], id: string) {
 }
 
 function applyRevengeBasicBonus(engine: GameEngineState, userId: string, ownedIds: string[], token: RollToken) {
-  if (!has(ownedIds, "S07") || token.source !== "BASIC" || token.face === "BACKDO") return token;
+  if (!has(ownedIds, "AUG-007") || token.source !== "BASIC" || token.face === "BACKDO") return token;
   const runtime = runtimeFor(engine, userId);
   if (!runtime.revengeBasicPending) return token;
   runtime.revengeBasicPending = false;
@@ -32,12 +32,12 @@ function applyBasicMovementBonuses(engine: GameEngineState, userId: string, owne
 }
 
 export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "P19")) return 0;
+  if (!has(ownedIds, "AUG-044")) return 0;
   return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;
 }
 
 function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "P19")) return;
+  if (!has(ownedIds, "AUG-044")) return;
   const runtime = runtimeFor(engine, userId);
   runtime.godHandCharges ??= 0;
   runtime.godHandBasicProgress ??= 0;
@@ -61,7 +61,7 @@ function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedId
 }
 
 function canUseDoReroll(engine: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!has(ownedIds, "S12")) return false;
+  if (!has(ownedIds, "AUG-012")) return false;
   return (engine.augmentRuntime?.[userId]?.doRerollsUsed ?? 0) < 2;
 }
 
@@ -103,8 +103,8 @@ export function beginRollFlow(
     const engine = clone(engineInput);
     const player = currentPlayer(engine);
     const runtime = runtimeFor(engine, player.userId);
-    const counter = Boolean(runtime.counterRollPending && has(ownedIds, "S11"));
-    const either = has(ownedIds, "P12");
+    const counter = Boolean(runtime.counterRollPending && has(ownedIds, "AUG-011"));
+    const either = has(ownedIds, "AUG-039");
 
     if (counter || either) {
       if (counter) runtime.counterRollPending = false;
@@ -205,7 +205,7 @@ export function applyGodHandRoll(
   ownedIds: string[] = [],
   setups: PlayerAugmentSetups = {},
 ) {
-  if (!has(ownedIds, "P19")) throw new Error("신의 손을 보유하고 있지 않습니다.");
+  if (!has(ownedIds, "AUG-044")) throw new Error("신의 손을 보유하고 있지 않습니다.");
   if (!["DO", "GAE", "GEOL", "YUT", "MO"].includes(face)) {
     throw new Error("신의 손으로 선택할 수 없는 결과입니다.");
   }
