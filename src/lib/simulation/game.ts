@@ -1,6 +1,5 @@
 import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
 import {
-  adjustedResultForGroup,
   armA04OnAcquisition,
   canGrantFaceExtraRoll,
   queueA04BonusForNextBasic,
@@ -41,7 +40,8 @@ import {
   createInitialEngine,
   currentPlayer,
   expireWormholeForCurrentRound,
-  legalMoveTargetsWithAugments,
+  legalMoveOptionsWithAugments,
+  discardMovementResultsWhenNoLegalMove,
   gachaMachineIsReady,
   isForcedRelocationImmune,
   resolveDueWormholeReturns,
@@ -806,33 +806,6 @@ function groupRepresentativesForBot(engine: GameEngineState, userId: string, own
   });
 }
 
-function adjustedResultForTargeting(
-  engine: GameEngineState,
-  userId: string,
-  piece: PieceState,
-  result: RollToken,
-  owned: string[],
-  setups: PlayerAugmentSetups,
-) {
-  if (!owned.includes("P02") || result.face === "BACKDO" || piece.status !== "FINISHED") {
-    return adjustedResultForGroup(engine, userId, piece.groupId, result, owned, setups);
-  }
-
-  const player = engine.players.find((candidate) => candidate.userId === userId);
-  const group = player?.pieces.filter((candidate) => candidate.groupId === piece.groupId) ?? [];
-  let bonus = 0;
-  if (owned.includes("P15") && group.length >= 2) bonus += group.length - 1;
-  else if (owned.includes("G08") && group.length >= 2) bonus += 1;
-  const acePieceId = setups.G16?.pieceId;
-  if (owned.includes("G16") && acePieceId && group.some((candidate) => candidate.id === acePieceId)) bonus += 1;
-  if (owned.includes("P10")) bonus += 2;
-  return {
-    ...result,
-    finalSteps: result.finalSteps + bonus,
-    forbidShortcuts: owned.includes("P10") || result.forbidShortcuts,
-  };
-}
-
 function moveArgsForTarget(groupId: string, result: RollToken, target: EngineMoveTarget, moonwalk: boolean): MoveArgs {
   const args: MoveArgs = { groupId, resultId: result.id };
   if (!moonwalk && result.face === "BACKDO") {
@@ -848,31 +821,30 @@ function bestMove(context: SimulationContext, engine: GameEngineState, userId: s
   const owned = actorOwned(context, userId);
   const setups = actorSetups(context, userId);
   const moveOwned = moveOwnedIdsForAthlete(owned);
-  const groups = groupRepresentativesForBot(engine, userId, owned);
   const candidates: Array<{ next: GameEngineState; score: number }> = [];
+  const legalOptions = legalMoveOptionsWithAugments(
+    engine,
+    userId,
+    owned,
+    setups,
+    context.ownedByUser,
+    moveOwned,
+  );
 
-  for (const result of engine.results) {
-    if (result.numericPool) continue;
-    for (const piece of groups) {
-      if (!isGroupUsableWithAugments(engine, userId, piece.groupId, owned, setups)) continue;
-      if (result.forbiddenPieceIds?.some((pieceId) => {
-        const player = engine.players.find((candidate) => candidate.userId === userId);
-        return player?.pieces.some((candidate) => candidate.groupId === piece.groupId && candidate.id === pieceId && candidate.status !== "FINISHED");
-      })) continue;
-
-      const effective = adjustedResultForTargeting(engine, userId, piece, result, moveOwned, setups);
-      const targets = legalMoveTargetsWithAugments(engine, userId, piece, effective, moveOwned, context.ownedByUser);
-      for (const target of targets) {
-        try {
-          const next = executeMoveAction(context, engine, userId, moveArgsForTarget(piece.groupId, result, target, owned.includes("P02")));
-          candidates.push({
-            next,
-            score: outcomeScore(context, engine, next, userId) + context.rng.decision.next() * 0.001,
-          });
-        } catch {
-          // Candidate enumeration is intentionally defensive; illegal combinations are ignored.
-        }
-      }
+  for (const option of legalOptions) {
+    try {
+      const next = executeMoveAction(
+        context,
+        engine,
+        userId,
+        moveArgsForTarget(option.groupId, option.result, option.target, owned.includes("P02")),
+      );
+      candidates.push({
+        next,
+        score: outcomeScore(context, engine, next, userId) + context.rng.decision.next() * 0.001,
+      });
+    } catch {
+      // The engine enumerates legal actions; execution failures are kept out of bot scoring.
     }
   }
 
@@ -1230,47 +1202,20 @@ function stepGame(context: SimulationContext) {
     before = context.engine;
     const next = bestMove(context, before, userId);
     if (!next) {
-      const plaguePieceIds = context.engine.augmentRuntime?.[userId]?.plaguePieceIds ?? {};
-      const hasBlockedInfectedWaitingPiece = actor.pieces.some((piece) => (
-        piece.status === "WAITING" && Boolean(plaguePieceIds[piece.id])
-      ));
-      if (hasBlockedInfectedWaitingPiece) {
-        const skipped = structuredClone(before);
-        skipped.results = [];
-        if (skipped.pendingRolls.length > 0) {
-          skipped.stage = "AWAITING_ROLL";
-        } else {
-          advanceTurnForVacancy(skipped);
-        }
-        skipped.lastAction = `${actor.displayName}: 역병으로 출발할 수 없어 이동 결과 소멸`;
-        commitTransition(context, before, skipped, userId, "move");
+      const owned = actorOwned(context, userId);
+      const discarded = discardMovementResultsWhenNoLegalMove(
+        before,
+        userId,
+        owned,
+        actorSetups(context, userId),
+        context.ownedByUser,
+        moveOwnedIdsForAthlete(owned),
+      );
+      if (discarded !== before) {
+        commitTransition(context, before, discarded, userId, "move");
         return;
       }
-      const turtleLocks = context.engine.augmentRuntime?.[userId]?.turtleLockedUntilRoundByPiece ?? {};
-      const boardGroupIds = [...new Set(actor.pieces
-        .filter((piece) => piece.status === "ON_BOARD")
-        .map((piece) => piece.groupId))];
-      const hasWaitingPiece = actor.pieces.some((piece) => piece.status === "WAITING");
-      const allBoardGroupsTurtleLocked = boardGroupIds.length > 0 && boardGroupIds.every((groupId) => (
-        actor.pieces.some((piece) => (
-          piece.groupId === groupId
-          && piece.status === "ON_BOARD"
-          && (turtleLocks[piece.id] ?? 0) > context.engine.round
-        ))
-      ));
-      if (!hasWaitingPiece && allBoardGroupsTurtleLocked) {
-        const skipped = structuredClone(before);
-        skipped.results = [];
-        if (skipped.pendingRolls.length > 0) {
-          skipped.stage = "AWAITING_ROLL";
-        } else {
-          advanceTurnForVacancy(skipped);
-        }
-        skipped.lastAction = `${actor.displayName}: 토끼와 거북이 이동 제한으로 이동 결과 소멸`;
-        commitTransition(context, before, skipped, userId, "move");
-        return;
-      }
-      throw new Error(`No legal move candidate for ${userId} at turn ${context.engine.turnNumber}.`);
+      throw new Error(`Engine exposed legal moves that the simulator could not execute for ${userId} at turn ${context.engine.turnNumber}.`);
     }
     commitTransition(context, before, next, userId, "move");
     return;

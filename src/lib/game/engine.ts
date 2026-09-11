@@ -1204,7 +1204,7 @@ function buildReverseTargetPlans(
   return [...deduped.values()];
 }
 
-function adjustedMoonwalkResult(
+export function adjustedResultForMove(
   engine: GameEngineState,
   userId: string,
   groupId: string,
@@ -1255,6 +1255,98 @@ export function legalMoveTargetsWithAugments(
     return legalTargets(piece, result).map((target) => ({ ...target, kind: "BACKDO" as const }));
   }
   return buildForwardTargetPlans(engine, userId, piece, result, ownedIds, ownedByUser).map((plan) => plan.target);
+}
+
+
+export type EngineLegalMoveOption = {
+  groupId: string;
+  result: RollToken;
+  target: EngineMoveTarget;
+};
+
+export function legalMoveOptionsWithAugments(
+  engine: GameEngineState,
+  userId: string,
+  ownedIds: string[] = [],
+  setups: PlayerAugmentSetups = {},
+  ownedByUser: Record<string, string[]> = {},
+  movementOwnedIds: string[] = ownedIds,
+): EngineLegalMoveOption[] {
+  if (engine.stage !== "MOVING") return [];
+  const player = engine.players.find((candidate) => candidate.userId === userId && candidate.seat === engine.currentSeat);
+  if (!player) return [];
+  const moonwalk = ownedIds.includes("P02");
+  const options: EngineLegalMoveOption[] = [];
+
+  for (const result of engine.results) {
+    if (result.numericPool) continue;
+    const seen = new Set<string>();
+    for (const piece of player.pieces) {
+      if (seen.has(piece.groupId)) continue;
+      if (piece.status === "WORMHOLE" || piece.status === "MARGIN") continue;
+      if (piece.status === "FINISHED" && !moonwalk) continue;
+      seen.add(piece.groupId);
+
+      if (!moonwalk && !isGroupUsableWithAugments(engine, userId, piece.groupId, ownedIds, setups)) continue;
+      if (result.forbiddenPieceIds?.some((pieceId) => player.pieces.some((candidate) => (
+        candidate.groupId === piece.groupId
+        && candidate.id === pieceId
+        && candidate.status !== "FINISHED"
+      )))) continue;
+
+      const effective = adjustedResultForMove(
+        engine,
+        userId,
+        piece.groupId,
+        result,
+        movementOwnedIds,
+        setups,
+      );
+      for (const target of legalMoveTargetsWithAugments(
+        engine,
+        userId,
+        piece,
+        effective,
+        movementOwnedIds,
+        ownedByUser,
+      )) {
+        options.push({ groupId: piece.groupId, result, target });
+      }
+    }
+  }
+
+  return options;
+}
+
+export function discardMovementResultsWhenNoLegalMove(
+  engineInput: GameEngineState,
+  userId: string,
+  ownedIds: string[] = [],
+  setups: PlayerAugmentSetups = {},
+  ownedByUser: Record<string, string[]> = {},
+  movementOwnedIds: string[] = ownedIds,
+): GameEngineState {
+  if (engineInput.stage !== "MOVING") return engineInput;
+  if (legalMoveOptionsWithAugments(
+    engineInput,
+    userId,
+    ownedIds,
+    setups,
+    ownedByUser,
+    movementOwnedIds,
+  ).length > 0) return engineInput;
+
+  const engine = clone(engineInput);
+  const actor = currentPlayer(engine);
+  engine.results = [];
+  if (engine.pendingRolls.length > 0) {
+    engine.stage = "AWAITING_ROLL";
+    engine.lastAction = `${actor.displayName}: 사용할 수 있는 이동 결과가 없어 결과 소멸`;
+  } else {
+    advanceTurn(engine);
+    engine.lastAction = `${actor.displayName}: 사용할 수 있는 이동 결과가 없어 결과 소멸 · ${currentPlayer(engine).displayName}의 턴`;
+  }
+  return engine;
 }
 
 function opponentGroupsAtNode(engine: GameEngineState, moverUserId: string, node: number) {
@@ -1654,7 +1746,7 @@ export function applyMove(
     : startedWaiting ? 0 : (representative.node ?? 0);
   if (!moonwalk) armEchoFollowerForDeparture(engine, mover.userId, args.groupId, startedWaiting, ownedIds);
   const wasPlagueDeparture = startedWaiting && isPlagueGroup(engine, mover.userId, args.groupId);
-  const effectiveResult = adjustedMoonwalkResult(engine, mover.userId, args.groupId, result, ownedIds, setups);
+  const effectiveResult = adjustedResultForMove(engine, mover.userId, args.groupId, result, ownedIds, setups);
   if (result.face !== "BACKDO" && isPlagueGroup(engine, mover.userId, args.groupId) && effectiveResult.finalSteps <= 0) {
     engine.results.splice(resultIndex, 1);
     clearGroupMoveFixedToOne(engine, mover.userId, args.groupId);
