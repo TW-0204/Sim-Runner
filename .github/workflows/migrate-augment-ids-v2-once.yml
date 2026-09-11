@@ -7,6 +7,7 @@ on:
       - refactor/augment-id-v2
     paths:
       - 'archive/migrations/migrate-augment-ids-v2.py'
+      - 'archive/migrations/preserve-augment-rng-v2.py'
       - '.github/workflows/migrate-augment-ids-v2-once.yml'
   workflow_dispatch:
 
@@ -34,6 +35,7 @@ jobs:
           sed -i 's/if path == LEGACY_MAP_PATH:/if path in {LEGACY_MAP_PATH, DOC_PATH}:/' archive/migrations/migrate-augment-ids-v2.py
           sed -i 's/Historical inactive A03 identity/Historical inactive identity/' archive/migrations/migrate-augment-ids-v2.py
           python archive/migrations/migrate-augment-ids-v2.py
+          python archive/migrations/preserve-augment-rng-v2.py
 
       - name: Verify augment ID lifecycle
         run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-id-integrity-check.ts
