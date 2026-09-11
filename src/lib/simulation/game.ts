@@ -113,6 +113,8 @@ type SimulationContext = {
   forcedAcquisitionIndex?: number;
   tokenCounter: number;
   actions: number;
+  s16BasicRollsByUser: Record<string, number>;
+  s16NakByUser: Record<string, number>;
 };
 
 const FOUR_GUARDIAN_NODES = [5, 10, 22, 29] as const;
@@ -1017,7 +1019,11 @@ function executeRoll(context: SimulationContext, engine: GameEngineState, userId
   const before = structuredClone(engine);
 
   const nakActive = Object.values(context.ownedByUser).some((ids) => ids.includes("S16"));
+  if (engine.pendingRolls[0] === "BASIC" && nakActive) {
+    context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;
+  }
   if (engine.pendingRolls[0] === "BASIC" && nakActive && context.rng.effect.next() < 0.05) {
+    context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
     const next = structuredClone(engine);
     next.pendingRolls.shift();
     const actorName = currentPlayer(next).displayName;
@@ -1379,6 +1385,8 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     forcedAcquisitionIndex: options.forcedAcquisitionIndex,
     tokenCounter: 0,
     actions: 0,
+    s16BasicRollsByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),
+    s16NakByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),
   };
 
   let error: string | undefined;
@@ -1430,6 +1438,10 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     triggerCountsByUser: context.triggerCountsByUser,
     g01TriggerBreakdownByUser: context.g01TriggerBreakdownByUser,
     firstAugmentLeaderCheckpoint: context.firstAugmentLeaderCheckpoint ?? undefined,
+    s16Telemetry: {
+      basicRollsByUser: structuredClone(context.s16BasicRollsByUser),
+      nakByUser: structuredClone(context.s16NakByUser),
+    },
     failureDiagnostics: status === "STALLED" ? {
       engine: structuredClone(context.engine),
       ownedByUser: structuredClone(context.ownedByUser),

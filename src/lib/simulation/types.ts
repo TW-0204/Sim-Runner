@@ -44,6 +44,10 @@ export type SimulationGameResult = {
   triggerCountsByUser?: TriggerCountsByUser;
   g01TriggerBreakdownByUser?: G01TriggerBreakdownByUser;
   firstAugmentLeaderCheckpoint?: FirstAugmentLeaderCheckpoint;
+  s16Telemetry?: {
+    basicRollsByUser: Record<string, number>;
+    nakByUser: Record<string, number>;
+  };
   failureDiagnostics?: SimulationFailureDiagnostics;
   error?: string;
 };

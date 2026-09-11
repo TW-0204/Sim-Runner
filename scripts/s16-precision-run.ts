@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function argument(name: string) {
@@ -18,66 +18,6 @@ const outputDir = argument("output-dir") ?? "precision-results/s16";
 const augmentId = "S16";
 const acquisitionIndex = 1;
 const rulesetId = "two-aug-start-r4-special-slots-v2";
-
-const gamePath = join(process.cwd(), "src/lib/simulation/game.ts");
-const typesPath = join(process.cwd(), "src/lib/simulation/types.ts");
-const originalGameSource = readFileSync(gamePath, "utf-8");
-const originalTypesSource = readFileSync(typesPath, "utf-8");
-
-const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);
-      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
-      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);
-      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
-      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);
-      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
-      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);
-      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
-      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;
-      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? "1");
-      const numericSeed = Number(context.seed);
-      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
-      const shouldForce = Boolean(forcedAugmentId) && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;
-      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
-
-const contextNeedle = `  actions: number;\n};`;
-const contextReplacement = `  actions: number;\n  s16BasicRollsByUser: Record<string, number>;\n  s16NakByUser: Record<string, number>;\n};`;
-
-const executeRollNeedle = `  const nakActive = Object.values(context.ownedByUser).some((ids) => ids.includes(\"S16\"));\n  if (engine.pendingRolls[0] === \"BASIC\" && nakActive && context.rng.effect.next() < 0.05) {`;
-const executeRollReplacement = `  const nakActive = Object.values(context.ownedByUser).some((ids) => ids.includes(\"S16\"));\n  if (engine.pendingRolls[0] === \"BASIC\" && nakActive) {\n    context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;\n  }\n  if (engine.pendingRolls[0] === \"BASIC\" && nakActive && context.rng.effect.next() < 0.05) {\n    context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;`;
-
-const initNeedle = `    actions: 0,\n  };`;
-const initReplacement = `    actions: 0,\n    s16BasicRollsByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),\n    s16NakByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),\n  };`;
-
-const returnNeedle = `    firstAugmentLeaderCheckpoint: context.firstAugmentLeaderCheckpoint ?? undefined,\n    failureDiagnostics:`;
-const returnReplacement = `    firstAugmentLeaderCheckpoint: context.firstAugmentLeaderCheckpoint ?? undefined,\n    s16Telemetry: {\n      basicRollsByUser: structuredClone(context.s16BasicRollsByUser),\n      nakByUser: structuredClone(context.s16NakByUser),\n    },\n    failureDiagnostics:`;
-
-const resultTypeNeedle = `  firstAugmentLeaderCheckpoint?: FirstAugmentLeaderCheckpoint;\n  failureDiagnostics?: SimulationFailureDiagnostics;`;
-const resultTypeReplacement = `  firstAugmentLeaderCheckpoint?: FirstAugmentLeaderCheckpoint;\n  s16Telemetry?: {\n    basicRollsByUser: Record<string, number>;\n    nakByUser: Record<string, number>;\n  };\n  failureDiagnostics?: SimulationFailureDiagnostics;`;
-
-for (const [label, source, needle] of [
-  ["augment selection", originalGameSource, selectionBlock],
-  ["simulation context", originalGameSource, contextNeedle],
-  ["S16 roll block", originalGameSource, executeRollNeedle],
-  ["context initialization", originalGameSource, initNeedle],
-  ["result return", originalGameSource, returnNeedle],
-  ["result type", originalTypesSource, resultTypeNeedle],
-] as const) {
-  if (!source.includes(needle)) throw new Error(`Could not locate ${label}; S16 precision injection aborted.`);
-}
-
-const patchedGameSource = originalGameSource
-  .replace(selectionBlock, forcedSelectionBlock)
-  .replace(contextNeedle, contextReplacement)
-  .replace(executeRollNeedle, executeRollReplacement)
-  .replace(initNeedle, initReplacement)
-  .replace(returnNeedle, returnReplacement);
-const patchedTypesSource = originalTypesSource.replace(resultTypeNeedle, resultTypeReplacement);
-
-process.env.SIM_FORCED_AUGMENT_ID = augmentId;
-process.env.SIM_FORCED_ACQUISITION_INDEX = String(acquisitionIndex);
-writeFileSync(gamePath, patchedGameSource, "utf-8");
-writeFileSync(typesPath, patchedTypesSource, "utf-8");
 
 type PlayerCount = 2 | 3 | 4;
 type IncompleteDetail = {
@@ -123,7 +63,7 @@ type PlayerReport = {
 const reports: PlayerReport[] = [];
 const startedAt = Date.now();
 
-try {
+{
   const [{ getBalanceRuleset }, { simulateGame }] = await Promise.all([
     import("@/lib/simulation/rulesets"),
     import("@/lib/simulation/game"),
@@ -155,6 +95,8 @@ try {
         ruleset,
         playerCount,
         maxActions: 20_000,
+        forcedAugmentId: augmentId,
+        forcedAcquisitionIndex: acquisitionIndex,
       });
       attempts += 1;
 
@@ -247,11 +189,6 @@ try {
     });
     console.error(`[s16-precision] ${playerCount}p complete: owner ${(ownerWinRate * 100).toFixed(2)}%, nak ${totalNak}/${totalBasicRolls}`);
   }
-} finally {
-  writeFileSync(gamePath, originalGameSource, "utf-8");
-  writeFileSync(typesPath, originalTypesSource, "utf-8");
-  delete process.env.SIM_FORCED_AUGMENT_ID;
-  delete process.env.SIM_FORCED_ACQUISITION_INDEX;
 }
 
 const allIncompleteDetails = reports.flatMap((item) => (
