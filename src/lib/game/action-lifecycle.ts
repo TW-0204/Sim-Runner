@@ -1,6 +1,5 @@
 import type { PlayerAugmentSetups } from "@/lib/augments/effects";
-import { dispatchOwnedAugmentHooks } from "@/lib/augments/runtime-registry";
-import { repairInvalidAugmentSetups } from "@/lib/augments/setup";
+import { dispatchAllAugmentHooks } from "@/lib/augments/runtime-registry";
 import {
   markAthleteDisqualified,
   markAthleteMovement,
@@ -17,6 +16,7 @@ import {
 } from "./engine";
 import { markNumberSplitSibling, normalizeNumberPool } from "./number-cells";
 import { maybePauseSelfRelianceAfterMovement } from "./self-reliance";
+import { applyPostTransitionAugmentLifecycle } from "./transition-lifecycle";
 import type { GameEngineState } from "./types";
 
 export type GameActionContext = {
@@ -46,6 +46,7 @@ export function finalizeAction(
   context: GameActionContext,
   actionKind: string,
   postActionUserId = actorUserId,
+  event: Readonly<Record<string, unknown>> = {},
 ) {
   let next = after;
   if (next.stage !== "CAPTURE_CHOICE" && actionKind !== "capture_choice") {
@@ -54,17 +55,14 @@ export function finalizeAction(
   if (next.stage !== "CAPTURE_CHOICE") {
     next = normalizeNumberPool(next, postActionUserId, actorOwned(context, postActionUserId));
   }
-  next = dispatchOwnedAugmentHooks("afterAction", {
-    engine: next,
+  return applyPostTransitionAugmentLifecycle(
     before,
-    ownerUserId: actorUserId,
+    next,
     actorUserId,
-    ownedByUser: context.ownedByUser,
-    setupsByUser: context.setupsByUser,
     actionKind,
-  });
-  next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
-  return next;
+    context,
+    event,
+  );
 }
 
 export function executeMoveAction(
@@ -74,8 +72,26 @@ export function executeMoveAction(
   args: GameMoveArgs,
 ) {
   const turnSnapshot = structuredClone(engineInput);
-  const engine = structuredClone(engineInput);
+  let engine = structuredClone(engineInput);
   const owned = actorOwned(context, userId);
+  const moveEvent = {
+    groupId: args.groupId,
+    resultId: args.resultId,
+    backwardTarget: args.backwardTarget,
+    forwardTarget: args.forwardTarget,
+    forwardPath: args.forwardPath,
+  };
+
+  engine = dispatchAllAugmentHooks("beforeMove", {
+    engine,
+    before: turnSnapshot,
+    actorUserId: userId,
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    actionKind: "move",
+    event: moveEvent,
+  });
+
   markAthleteMovement(engine, userId, owned);
   const coexistence = prepareAthleteCoexistence(engine, userId, owned, context.ownedByUser);
   let next = applyMove(
@@ -86,20 +102,15 @@ export function executeMoveAction(
     coexistence.ownedByUser,
   );
   coexistence.restore(next);
-  next = dispatchOwnedAugmentHooks("afterMove", {
+  next = dispatchAllAugmentHooks("afterMove", {
     engine: next,
     before: turnSnapshot,
-    ownerUserId: userId,
     actorUserId: userId,
     ownedByUser: context.ownedByUser,
     setupsByUser: context.setupsByUser,
     actionKind: "move",
-    event: {
-      groupId: args.groupId,
-      resultId: args.resultId,
-    },
+    event: moveEvent,
   });
-  next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
   next = markNumberSplitSibling(engine, next, userId, args.groupId, args.resultId);
   next = maybePauseSelfRelianceAfterMovement(turnSnapshot, next, userId, owned);
   next = maybePauseCaptureChoices(turnSnapshot, next, {
@@ -112,7 +123,7 @@ export function executeMoveAction(
     next.round = turnSnapshot.round;
     next.turnNumber = turnSnapshot.turnNumber;
   }
-  return finalizeAction(turnSnapshot, next, userId, context, "move");
+  return finalizeAction(turnSnapshot, next, userId, context, "move", userId, moveEvent);
 }
 
 export function executeStackAction(
@@ -126,7 +137,7 @@ export function executeStackAction(
   const owned = actorOwned(context, userId);
   if (stack) markAthleteDisqualified(engine, userId, owned);
   const next = applyStackChoice(engine, stack, owned);
-  return finalizeAction(before, next, userId, context, "stack");
+  return finalizeAction(before, next, userId, context, "stack", userId, { stack });
 }
 
 export function executeRelocationAction(
@@ -140,7 +151,7 @@ export function executeRelocationAction(
   const owned = actorOwned(context, userId);
   if (groupId) markAthleteDisqualified(engine, userId, owned);
   const next = applyRelocationChoice(engine, groupId, owned);
-  return finalizeAction(before, next, userId, context, "relocate");
+  return finalizeAction(before, next, userId, context, "relocate", userId, { groupId });
 }
 
 export function executeGrandUnityAction(
@@ -154,5 +165,5 @@ export function executeGrandUnityAction(
   const owned = actorOwned(context, userId);
   markAthleteDisqualified(engine, userId, owned);
   const next = applyGrandUnity(engine, anchorGroupId, owned);
-  return finalizeAction(before, next, userId, context, "grand_unity");
+  return finalizeAction(before, next, userId, context, "grand_unity", userId, { anchorGroupId });
 }
