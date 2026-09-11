@@ -32,3 +32,4 @@ python scripts/apply-p10-overpass.py
 python scripts/apply-stall-fixes-v9.py
 python scripts/apply-stall-fixes-v10.py
 python scripts/apply-s15-log-cleanup.py
+python scripts/apply-stall-fixes-v11.py
