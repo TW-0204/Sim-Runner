@@ -9,6 +9,7 @@ export type BatchOptions = {
   games: number;
   seedStart?: number;
   maxActions?: number;
+  maxRounds?: number;
 };
 
 export type BatchResult = {
@@ -30,6 +31,7 @@ export function runSimulationBatch(options: BatchOptions): BatchResult {
       ruleset,
       playerCount: options.playerCount,
       maxActions: options.maxActions,
+      maxRounds: options.maxRounds,
     }));
   }
 

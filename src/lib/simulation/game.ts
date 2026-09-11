@@ -88,6 +88,7 @@ type SimulationOptions = {
   ruleset: BalanceRuleset;
   playerCount: number;
   maxActions?: number;
+  maxRounds?: number;
 };
 
 type MoveArgs = Parameters<typeof applyMove>[1];
@@ -1340,6 +1341,10 @@ function stepGame(context: SimulationContext) {
 export function simulateGame(options: SimulationOptions): SimulationGameResult {
   if (![2, 3, 4].includes(options.playerCount)) throw new Error("playerCount must be 2, 3, or 4.");
   const maxActions = options.maxActions ?? 20_000;
+  const maxRounds = options.maxRounds;
+  if (maxRounds != null && (!Number.isInteger(maxRounds) || maxRounds < 1)) {
+    throw new Error("maxRounds must be a positive integer when provided.");
+  }
   const engine = createInitialEngine(playerSeeds(options.playerCount));
   resizePieces(engine, options.ruleset.pieceCount);
 
@@ -1364,7 +1369,11 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
   let error: string | undefined;
   let status: SimulationGameResult["status"] = "ACTION_LIMIT";
 
-  while (!context.engine.winnerUserId && context.actions < maxActions) {
+  while (
+    !context.engine.winnerUserId
+    && context.actions < maxActions
+    && (maxRounds == null || context.engine.round <= maxRounds)
+  ) {
     try {
       stepGame(context);
       context.actions += 1;
@@ -1383,6 +1392,7 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
   }
 
   if (context.engine.winnerUserId) status = "COMPLETED";
+  else if (!error && maxRounds != null && context.engine.round > maxRounds) status = "DRAW";
   else if (!error && context.actions >= maxActions) status = "ACTION_LIMIT";
 
   const winner = context.engine.players.find((player) => player.userId === context.engine.winnerUserId) ?? null;

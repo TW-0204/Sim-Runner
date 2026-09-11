@@ -34,6 +34,7 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
 
   const first = results[0];
   const completed = results.filter((result) => result.status === "COMPLETED");
+  const draws = results.filter((result) => result.status === "DRAW");
   const rounds = completed.map((result) => result.round).sort((a, b) => a - b);
   const turns = completed.map((result) => result.turnNumber);
   const averageRound = average(rounds);
@@ -85,6 +86,20 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
   const uniqueLeaderCheckpoints = eligibleLeaderCheckpoints.filter((result) => result.firstAugmentLeaderCheckpoint?.leaderUserIds.length === 1);
   const tiedLeaderCheckpoints = eligibleLeaderCheckpoints.filter((result) => (result.firstAugmentLeaderCheckpoint?.leaderUserIds.length ?? 0) !== 1);
   const leaderWins = uniqueLeaderCheckpoints.filter((result) => result.firstAugmentLeaderCheckpoint?.leaderUserIds[0] === result.winnerUserId).length;
+
+  const drawGamesOwnedByAugment = new Map<string, number>();
+  for (const result of draws) {
+    const seen = new Set<string>();
+    for (const acquisition of result.acquisitions) {
+      const key = `${acquisition.userId}\u0000${acquisition.augmentId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      drawGamesOwnedByAugment.set(
+        acquisition.augmentId,
+        (drawGamesOwnedByAugment.get(acquisition.augmentId) ?? 0) + 1,
+      );
+    }
+  }
 
   const byAugment = new Map<string, {
     gamesOwned: number;
@@ -144,16 +159,36 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
     }
   }
 
+  for (const augmentId of drawGamesOwnedByAugment.keys()) {
+    if (byAugment.has(augmentId)) continue;
+    byAugment.set(augmentId, {
+      gamesOwned: 0,
+      wins: 0,
+      specialWins: 0,
+      triggeredGames: 0,
+      totalTriggers: 0,
+      winningTriggers: 0,
+      totalRoundsRemaining: 0,
+      totalTurnsRemaining: 0,
+      totalGameRounds: 0,
+      byIndex: new Map<number, { games: number; wins: number }>(),
+    });
+  }
+
   const augmentWinStats: BatchSummary["augmentWinStats"] = {};
   for (const [augmentId, stats] of byAugment) {
     const firstIndex = stats.byIndex.get(1) ?? { games: 0, wins: 0 };
     const secondIndex = stats.byIndex.get(2) ?? { games: 0, wins: 0 };
     const thirdIndex = stats.byIndex.get(3) ?? { games: 0, wins: 0 };
     const averageGameRound = stats.gamesOwned ? stats.totalGameRounds / stats.gamesOwned : null;
+    const drawGamesOwned = drawGamesOwnedByAugment.get(augmentId) ?? 0;
+    const terminalGamesOwned = stats.gamesOwned + drawGamesOwned;
     augmentWinStats[augmentId] = {
       gamesOwned: stats.gamesOwned,
       wins: stats.wins,
       winRate: rate(stats.wins, stats.gamesOwned),
+      drawGamesOwned,
+      drawRate: rate(drawGamesOwned, terminalGamesOwned),
       specialWins: stats.specialWins,
       specialWinShareOfWins: stats.wins ? stats.specialWins / stats.wins : null,
       triggeredGames: stats.triggeredGames,
@@ -197,6 +232,7 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
     playerCount: first.playerCount,
     games: results.length,
     completedGames: completed.length,
+    drawGames: draws.length,
     stalledGames: results.filter((result) => result.status === "STALLED").length,
     actionLimitGames: results.filter((result) => result.status === "ACTION_LIMIT").length,
     averageRound,

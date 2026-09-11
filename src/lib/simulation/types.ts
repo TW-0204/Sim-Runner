@@ -17,7 +17,7 @@ export type AugmentAcquisition = {
   tier: "silver" | "gold" | "prism";
 };
 
-export type SimulationStatus = "COMPLETED" | "STALLED" | "ACTION_LIMIT";
+export type SimulationStatus = "COMPLETED" | "DRAW" | "STALLED" | "ACTION_LIMIT";
 
 export type SimulationFailureDiagnostics = {
   engine: GameEngineState;
@@ -60,6 +60,7 @@ export type BatchSummary = {
   playerCount: number;
   games: number;
   completedGames: number;
+  drawGames: number;
   stalledGames: number;
   actionLimitGames: number;
   averageRound: number | null;
@@ -94,6 +95,8 @@ export type BatchSummary = {
     gamesOwned: number;
     wins: number;
     winRate: number;
+    drawGamesOwned: number;
+    drawRate: number;
     specialWins: number;
     specialWinShareOfWins: number | null;
     triggeredGames: number;

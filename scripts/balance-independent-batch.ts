@@ -29,6 +29,8 @@ if (!Number.isInteger(seedStart) || seedStart < 0) throw new Error("--seed-start
 const batchId = argument("batch-id") ?? "1";
 const rulesetId = argument("ruleset") ?? "two-aug-start-r4-special-slots-v2";
 const maxActions = positiveInteger("max-actions", argument("max-actions"), 20_000);
+const maxRoundsArg = argument("max-rounds");
+const maxRounds = maxRoundsArg == null ? undefined : positiveInteger("max-rounds", maxRoundsArg, 30);
 const outputDir = argument("output-dir") ?? "independent-results";
 const failOnIncomplete = flag("fail-on-incomplete");
 const ruleset = getBalanceRuleset(rulesetId);
@@ -42,6 +44,7 @@ const result = runSimulationBatch({
   games,
   seedStart,
   maxActions,
+  maxRounds,
 });
 
 const elapsedSeconds = (Date.now() - startedAt) / 1000;
@@ -69,6 +72,7 @@ const payload = {
     seedEnd: seedStart + games - 1,
     generatedAt: new Date().toISOString(),
     elapsedSeconds,
+    maxRounds: maxRounds ?? null,
   },
   summary: result.summary,
   incompleteGames: incompleteDetails,
@@ -97,6 +101,8 @@ writeFileSync(mdPath, [
   `- games: ${games.toLocaleString()}`,
   `- seeds: ${seedStart}–${seedStart + games - 1}`,
   `- completed: ${result.summary.completedGames.toLocaleString()}/${games.toLocaleString()}`,
+  `- draws: ${result.summary.drawGames.toLocaleString()}`,
+  `- max rounds: ${maxRounds ?? "none"}`,
   `- stalled: ${result.summary.stalledGames}`,
   `- action limit: ${result.summary.actionLimitGames}`,
   `- elapsed: ${elapsedSeconds.toFixed(1)}s`,
@@ -105,7 +111,7 @@ writeFileSync(mdPath, [
 ].join("\n"), "utf-8");
 
 console.error(`[independent] ${playerCount}p batch ${batchId} complete in ${elapsedSeconds.toFixed(1)}s`);
-console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${incompleteGames} incomplete`);
+console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${result.summary.drawGames} draws, ${incompleteGames} incomplete`);
 if (incompleteDetails.length > 0) {
   console.error(`[independent] incomplete seeds: ${incompleteDetails.map((game) => game.seed).join(", ")}`);
 }
