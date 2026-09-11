@@ -6,6 +6,10 @@ on:
       - experiment/s16
     paths:
       - '.github/workflows/balance-overnight-full-audit.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
+      - 'scripts/precision-all-augment-run.ts'
   workflow_dispatch:
 
 permissions:
@@ -42,11 +46,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
-      - name: Verify v3 mechanics
+      - name: Verify canonical mechanics
         run: node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
       - name: Run natural 6K batch
         run: >-
@@ -84,10 +84,6 @@ jobs:
           pattern: overnight-natural-*
           path: natural-results
           merge-multiple: true
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
       - name: Merge natural scan
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
@@ -114,8 +110,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
       - id: catalog
         name: Export active augment IDs
         run: echo "ids=$(node --import ./scripts/register-ts-hooks.mjs scripts/list-active-augment-ids.ts)" >> "$GITHUB_OUTPUT"
@@ -135,10 +129,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
       - name: Run all-context forced precision
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/precision-all-augment-run.ts
@@ -171,10 +161,6 @@ jobs:
           pattern: overnight-precision-*
           path: precision-results
           merge-multiple: true
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
       - name: Merge forced precision
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/precision-all-augment-merge.ts
@@ -223,10 +209,6 @@ jobs:
           done
           mkdir -p audit-input/diagnostics
           gh run download 34507693400 -n balance-incomplete-diagnostics-90k -D audit-input/diagnostics || true
-      - name: Apply current v3 rules
-        run: bash scripts/apply-v3-stack.sh
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
       - name: Build comprehensive report
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/balance-full-audit-merge.ts
