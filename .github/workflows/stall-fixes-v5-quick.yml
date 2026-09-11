@@ -1,0 +1,34 @@
+name: Stall Fix V5 Quick
+
+on:
+  push:
+    branches: [experiment/s16]
+    paths:
+      - '.github/workflows/stall-fixes-v5-quick.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - name: Apply current v3 plus stall fixes
+        run: bash scripts/apply-v3-stack.sh
+      - name: Recheck known A10 terminal seeds
+        run: |
+          node --import ./scripts/register-ts-hooks.mjs --input-type=module <<'NODE'
+          import { getBalanceRuleset } from './src/lib/simulation/rulesets.ts';
+          import { simulateGame } from './src/lib/simulation/game.ts';
+          const ruleset = getBalanceRuleset('two-aug-start-r4-special-slots-v2');
+          for (const seed of ['1301484', '1301794']) {
+            const result = simulateGame({ seed, ruleset, playerCount: 2, maxActions: 20000 });
+            console.log(JSON.stringify({ seed, status: result.status, winnerUserId: result.winnerUserId, winnerCondition: result.winnerCondition, error: result.error }));
+            if (result.status === 'STALLED') throw new Error(`seed ${seed} still stalled: ${result.error}`);
+          }
+          NODE
