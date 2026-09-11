@@ -24,8 +24,21 @@ const typesPath = join(process.cwd(), "src/lib/simulation/types.ts");
 const originalGameSource = readFileSync(gamePath, "utf-8");
 const originalTypesSource = readFileSync(typesPath, "utf-8");
 
-const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;\n      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? \"1\");\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForce = Boolean(forcedAugmentId) && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;\n      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(visible);`;
+const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);
+      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
+      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);
+      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
+      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
+const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);
+      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
+      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);
+      const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
+      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;
+      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? "1");
+      const numericSeed = Number(context.seed);
+      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
+      const shouldForce = Boolean(forcedAugmentId) && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;
+      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
 
 const contextNeedle = `  actions: number;\n};`;
 const contextReplacement = `  actions: number;\n  s16BasicRollsByUser: Record<string, number>;\n  s16NakByUser: Record<string, number>;\n};`;
@@ -53,7 +66,7 @@ for (const [label, source, needle] of [
   if (!source.includes(needle)) throw new Error(`Could not locate ${label}; S16 precision injection aborted.`);
 }
 
-let patchedGameSource = originalGameSource
+const patchedGameSource = originalGameSource
   .replace(selectionBlock, forcedSelectionBlock)
   .replace(contextNeedle, contextReplacement)
   .replace(executeRollNeedle, executeRollReplacement)
@@ -252,6 +265,6 @@ const baseName = `s16-precision-${games}`;
 writeFileSync(join(outputDir, `${baseName}.json`), `${JSON.stringify(report, null, 2)}\n`, "utf-8");
 writeFileSync(join(outputDir, `${baseName}.md`), `${markdown}\n`, "utf-8");
 console.log(markdown);
-console.error(`[s16-precision] total elapsed ${(report.elapsedSeconds).toFixed(1)}s`);
+console.error(`[s16-precision] total elapsed ${report.elapsedSeconds.toFixed(1)}s`);
 
 if (reports.some((item) => item.incompleteGames > 0)) process.exitCode = 1;
