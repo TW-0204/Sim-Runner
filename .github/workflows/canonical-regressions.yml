@@ -1,0 +1,29 @@
+name: Canonical Historical Regressions
+
+on:
+  push:
+    branches:
+      - experiment/s16
+      - refactor/canonical-v11
+    paths:
+      - '.github/workflows/canonical-regressions.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
+      - 'scripts/canonical-regression-seeds.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Run 28 historical exact regression cases
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
