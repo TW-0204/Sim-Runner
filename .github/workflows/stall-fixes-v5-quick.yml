@@ -1,6 +1,7 @@
 name: Stall Fix V5 Quick
 
 on:
+  workflow_dispatch:
   push:
     branches: [experiment/s16]
     paths:
