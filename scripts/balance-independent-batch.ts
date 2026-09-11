@@ -47,7 +47,7 @@ const result = runSimulationBatch({
 const elapsedSeconds = (Date.now() - startedAt) / 1000;
 const incompleteGames = result.summary.stalledGames + result.summary.actionLimitGames;
 const incompleteDetails = result.games
-  .filter((game) => game.status !== "COMPLETED")
+  .filter((game) => game.status !== "COMPLETED" && game.status !== "DRAW")
   .map((game) => ({
     seed: game.seed,
     status: game.status,
