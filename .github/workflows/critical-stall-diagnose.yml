@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - experiment/s16
+      - refactor/canonical-v11
     paths:
       - '.github/workflows/critical-stall-diagnose.yml'
       - 'src/lib/augments/**'
@@ -34,6 +35,8 @@ jobs:
           cp src/lib/simulation/game.ts critical-stall-diagnostics/effective-source/simulation-game.ts
           cp src/lib/game/engine.ts critical-stall-diagnostics/effective-source/engine.ts
           cp src/lib/game/passive-win.ts critical-stall-diagnostics/effective-source/passive-win.ts
+          cp src/lib/game/augment-lifecycle.ts critical-stall-diagnostics/effective-source/augment-lifecycle.ts
+          cp src/lib/game/invariants.ts critical-stall-diagnostics/effective-source/invariants.ts
           cp docs/augment-visual-manifest.md critical-stall-diagnostics/effective-source/augment-visual-manifest.md
 
       - name: Reproduce critical stall seeds
