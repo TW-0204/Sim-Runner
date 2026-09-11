@@ -11,8 +11,9 @@ for (const augment of AUGMENTS) {
   if (!registration) continue;
   if (registration.implementation === "hooked") {
     const hookCount = Object.keys(registration.hooks ?? {}).length;
-    if (hookCount === 0 && !registration.setup) {
-      problems.push(`hooked augment ${augment.id} has neither hooks nor setup policy`);
+    const referenceCount = registration.references?.length ?? 0;
+    if (hookCount === 0 && referenceCount === 0 && !registration.setup) {
+      problems.push(`hooked augment ${augment.id} has no hooks, setup policy, or reference policy`);
     }
   }
 }
