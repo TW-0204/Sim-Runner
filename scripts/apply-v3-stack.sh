@@ -22,3 +22,4 @@ python scripts/apply-augment-rough-balance-v2.py
 python scripts/run-balance-rework-v3.py
 python scripts/apply-balance-rework-v3-plague-duration.py
 python scripts/apply-balance-rework-v3-stall-fix.py
+python scripts/apply-stall-fixes-v4.py
