@@ -89,6 +89,8 @@ type SimulationOptions = {
   playerCount: number;
   maxActions?: number;
   maxRounds?: number;
+  forcedAugmentId?: string;
+  forcedAcquisitionIndex?: number;
 };
 
 type MoveArgs = Parameters<typeof applyMove>[1];
@@ -107,6 +109,8 @@ type SimulationContext = {
   rng: SimulationRandomStreams;
   seed: string;
   ruleset: BalanceRuleset;
+  forcedAugmentId?: string;
+  forcedAcquisitionIndex?: number;
   tokenCounter: number;
   actions: number;
 };
@@ -401,7 +405,16 @@ function applyDueAugmentEvents(context: SimulationContext) {
       const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
       if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);
       const currentlyEligible = visible.filter((id) => id !== "A10" || playerHasWaitingPiece(context, offer.userId));
-      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);
+      const numericSeed = Number(context.seed);
+      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
+      const forceEligible = context.forcedAugmentId !== "A10" || playerHasWaitingPiece(context, offer.userId);
+      const shouldForce = Boolean(context.forcedAugmentId)
+        && forceEligible
+        && eventIndex + 1 === (context.forcedAcquisitionIndex ?? 1)
+        && player.seat === forcedSeat;
+      const selectedId = shouldForce
+        ? context.forcedAugmentId!
+        : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);
 
       const acquiredId = selectedId === "A05" || selectedId === "A06"
         ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
@@ -1362,6 +1375,8 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     rng: createSimulationRandomStreams(options.seed, options.ruleset.rngNamespace ?? options.ruleset.id),
     seed: options.seed,
     ruleset: options.ruleset,
+    forcedAugmentId: options.forcedAugmentId,
+    forcedAcquisitionIndex: options.forcedAcquisitionIndex,
     tokenCounter: 0,
     actions: 0,
   };

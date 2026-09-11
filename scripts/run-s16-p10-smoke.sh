@@ -4,8 +4,6 @@ set -euo pipefail
 S16_SMOKE_GAMES="${S16_SMOKE_GAMES:-20}"
 OUTPUT_DIR="${TMPDIR:-/tmp}/augment-yut-s16-p10-smoke"
 
-bash scripts/apply-v3-stack.sh
-
 node --import ./scripts/register-ts-hooks.mjs scripts/balance-rework-v3-probe.ts
 node --import ./scripts/register-ts-hooks.mjs scripts/p10-overpass-probe.ts
 node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v9-probe.ts
@@ -22,4 +20,4 @@ node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts \
   --games "$S16_SMOKE_GAMES" \
   --output-dir "$OUTPUT_DIR"
 
-echo "S16 + P10 + v11 smoke PASS"
+echo "Canonical v11 S16 + P10 smoke PASS"

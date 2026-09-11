@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function argument(name: string) {
@@ -24,21 +24,6 @@ if (!augmentId) throw new Error("--augment is required.");
 const games = positiveInteger("games", argument("games"), 1_000);
 const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 30);
 const outputDir = argument("output-dir") ?? "critical-precision-results";
-
-const gamePath = join(process.cwd(), "src/lib/simulation/game.ts");
-const originalGameSource = readFileSync(gamePath, "utf-8");
-
-// Canonical post-v10 acquisition block after scripts/apply-v3-stack.sh.
-const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const currentlyEligible = visible.filter((id) => id !== \"A10\" || playerHasWaitingPiece(context, offer.userId));\n      const selectedId = context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
-
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const currentlyEligible = visible.filter((id) => id !== \"A10\" || playerHasWaitingPiece(context, offer.userId));\n      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;\n      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? \"1\");\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const forceEligible = forcedAugmentId !== \"A10\" || playerHasWaitingPiece(context, offer.userId);\n      const shouldForce = Boolean(forcedAugmentId) && forceEligible && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;\n      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
-
-if (!originalGameSource.includes(selectionBlock)) {
-  throw new Error("Could not locate post-v10 augment-selection block. Apply the current v3 stack before running critical precision.");
-}
-
-process.env.SIM_FORCED_AUGMENT_ID = augmentId;
-writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
 
 const specialConditions: Record<string, string> = {
   P02: "MOONWALK",
@@ -83,7 +68,7 @@ type Report = {
 const reports: Report[] = [];
 const startedAt = Date.now();
 
-try {
+{
   const [{ AUGMENTS, AUGMENT_BY_ID }, { getBalanceRuleset }, { simulateGame }] = await Promise.all([
     import("@/lib/augments/catalog"),
     import("@/lib/simulation/rulesets"),
@@ -100,8 +85,6 @@ try {
   const ruleset = getBalanceRuleset("two-aug-start-r4-special-slots-v2");
 
   for (const acquisitionIndex of acquisitionIndexes) {
-    process.env.SIM_FORCED_ACQUISITION_INDEX = String(acquisitionIndex);
-
     for (const playerCount of [2, 3, 4] as const) {
       let validGames = 0;
       let attempts = 0;
@@ -125,6 +108,8 @@ try {
           playerCount,
           maxActions: 20_000,
           maxRounds,
+          forcedAugmentId: augmentId,
+          forcedAcquisitionIndex: acquisitionIndex,
         });
         attempts += 1;
 
@@ -237,7 +222,7 @@ try {
     `- timing: ${target.timing ?? "any"}`,
     `- max rounds: ${maxRounds} (DRAW after cap)`,
     `- valid games per slot/player-count context: ${games}`,
-    "- current post-v10 acquisition flow is applied before forcing",
+    "- canonical acquisition flow is used directly; forcing is passed as simulation input",
     "- A10 is forced only when the owner still has a WAITING piece; invalid contexts are discarded",
     "",
     "| Slot | Players | Win | Delta | Draw | Incomplete | Avg triggers | Special-condition win | Discarded |",
@@ -250,8 +235,4 @@ try {
   console.log(markdown);
 
   if (reports.some((item) => item.incompleteGames > 0)) process.exitCode = 1;
-} finally {
-  writeFileSync(gamePath, originalGameSource, "utf-8");
-  delete process.env.SIM_FORCED_AUGMENT_ID;
-  delete process.env.SIM_FORCED_ACQUISITION_INDEX;
 }

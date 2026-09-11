@@ -2,15 +2,9 @@
 
 ## Augment source of truth
 
-This repository uses a patch stack. Raw files such as `src/lib/augments/catalog.ts` may contain stale pre-patch values.
+`src/` is the canonical source of truth for the current game and simulation behavior.
 
-For the current effective rules, treat the state after:
-
-```bash
-bash scripts/apply-v3-stack.sh
-```
-
-as canonical.
+Do not apply legacy patch scripts before running tests or simulations. Historical patch machinery is preserved under `archive/legacy-patches/` for audit only and must not be used as an execution dependency.
 
 ## Visual manifest synchronization
 
