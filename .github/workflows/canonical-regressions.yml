@@ -25,5 +25,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run 30 canonical exact regression cases
+      - name: Run 32 canonical exact regression cases
         run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
