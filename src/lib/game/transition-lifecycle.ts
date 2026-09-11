@@ -1,6 +1,7 @@
 import type { PlayerAugmentSetups } from "@/lib/augments/effects";
 import { dispatchAllAugmentHooks } from "@/lib/augments/runtime-registry";
 import { repairInvalidAugmentSetups } from "@/lib/augments/setup";
+import { applyPassiveSpecialWinner } from "./passive-win";
 import type { GameEngineState } from "./types";
 
 export type GameLifecycleContext = {
@@ -26,6 +27,23 @@ function capturedPieceIds(
   return captured;
 }
 
+function turnOwnerUserId(engine: GameEngineState) {
+  return engine.players.find((player) => player.seat === engine.currentSeat)?.userId ?? null;
+}
+
+function clearFinishedPlagueTurn(
+  before: GameEngineState,
+  after: GameEngineState,
+  beforeTurnOwner: string | null,
+  afterTurnOwner: string | null,
+) {
+  if (!beforeTurnOwner || !afterTurnOwner || beforeTurnOwner === afterTurnOwner) return;
+  const runtime = after.augmentRuntime?.[beforeTurnOwner];
+  if (!runtime?.plagueTurnActive) return;
+  runtime.plaguePieceIds = {};
+  runtime.plagueTurnActive = false;
+}
+
 /**
  * Canonical cross-cutting lifecycle for one completed game-state transition.
  *
@@ -33,6 +51,10 @@ function capturedPieceIds(
  * transition. Instead the game layer emits stable lifecycle events here. Existing
  * legacy augments are unaffected until migrated; new hooked augments can subscribe
  * without adding another branch to simulation or unrelated engine code.
+ *
+ * This boundary also owns legacy cross-cutting cleanup/win rules that previously
+ * lived in the simulator. That keeps every caller (simulation, UI, future network
+ * runtime) on the same state-transition semantics.
  */
 export function applyPostTransitionAugmentLifecycle(
   before: GameEngineState,
@@ -77,8 +99,8 @@ export function applyPostTransitionAugmentLifecycle(
     event,
   });
 
-  const beforeTurnOwner = before.players.find((player) => player.seat === before.currentSeat)?.userId;
-  const afterTurnOwner = next.players.find((player) => player.seat === next.currentSeat)?.userId;
+  const beforeTurnOwner = turnOwnerUserId(before);
+  const afterTurnOwner = turnOwnerUserId(next);
   if (beforeTurnOwner && afterTurnOwner && beforeTurnOwner !== afterTurnOwner && !next.winnerUserId) {
     next = dispatchAllAugmentHooks("onTurnEnd", {
       engine: next,
@@ -100,5 +122,7 @@ export function applyPostTransitionAugmentLifecycle(
     });
   }
 
-  return repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
+  next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
+  clearFinishedPlagueTurn(before, next, beforeTurnOwner, turnOwnerUserId(next));
+  return applyPassiveSpecialWinner(next, context.ownedByUser);
 }
