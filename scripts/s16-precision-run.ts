@@ -80,6 +80,18 @@ writeFileSync(gamePath, patchedGameSource, "utf-8");
 writeFileSync(typesPath, patchedTypesSource, "utf-8");
 
 type PlayerCount = 2 | 3 | 4;
+type IncompleteDetail = {
+  seed: string;
+  forcedSeat: number;
+  forcedUserId: string;
+  status: string;
+  error: string | null;
+  round: number;
+  turnNumber: number;
+  actions: number;
+  acquisitions: unknown;
+  failureDiagnostics: unknown;
+};
 type PlayerReport = {
   playerCount: PlayerCount;
   requestedGames: number;
@@ -87,6 +99,7 @@ type PlayerReport = {
   discardedContexts: number;
   completedGames: number;
   incompleteGames: number;
+  incompleteDetails: IncompleteDetail[];
   wins: number;
   ownerWinRate: number;
   baselineWinRate: number;
@@ -122,6 +135,7 @@ try {
     let attempts = 0;
     let completedGames = 0;
     let incompleteGames = 0;
+    const incompleteDetails: IncompleteDetail[] = [];
     let wins = 0;
     let totalBasicRolls = 0;
     let totalNak = 0;
@@ -156,6 +170,20 @@ try {
       validGames += 1;
       if (result.status !== "COMPLETED") {
         incompleteGames += 1;
+        const detail: IncompleteDetail = {
+          seed: result.seed,
+          forcedSeat,
+          forcedUserId,
+          status: result.status,
+          error: result.error ?? null,
+          round: result.round,
+          turnNumber: result.turnNumber,
+          actions: result.actions,
+          acquisitions: result.acquisitions,
+          failureDiagnostics: result.failureDiagnostics ?? null,
+        };
+        incompleteDetails.push(detail);
+        console.error(`[s16-precision] incomplete ${playerCount}p seed ${detail.seed}: ${detail.status} · round ${detail.round} · turn ${detail.turnNumber} · actions ${detail.actions}${detail.error ? ` · ${detail.error}` : ""}`);
         continue;
       }
 
@@ -197,6 +225,7 @@ try {
       discardedContexts: attempts - validGames,
       completedGames,
       incompleteGames,
+      incompleteDetails,
       wins,
       ownerWinRate,
       baselineWinRate,
@@ -225,6 +254,9 @@ try {
   delete process.env.SIM_FORCED_ACQUISITION_INDEX;
 }
 
+const allIncompleteDetails = reports.flatMap((item) => (
+  item.incompleteDetails.map((detail) => ({ playerCount: item.playerCount, ...detail }))
+));
 const report = {
   augmentId,
   acquisitionIndex,
@@ -233,11 +265,17 @@ const report = {
   totalValidGames: games * 3,
   generatedAt: new Date().toISOString(),
   elapsedSeconds: (Date.now() - startedAt) / 1000,
+  incompleteDetails: allIncompleteDetails,
   reports,
 };
 
 const pct = (value: number) => `${(value * 100).toFixed(2)}%`;
 const pp = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(2)}%p`;
+const incompleteMarkdown = allIncompleteDetails.length > 0
+  ? allIncompleteDetails.map((item) => (
+      `- ${item.playerCount}P seed ${item.seed}: ${item.status} · round ${item.round} · turn ${item.turnNumber} · actions ${item.actions}${item.error ? ` · ${item.error}` : ""}`
+    ))
+  : ["- none"];
 const markdown = [
   "# S16 Nak Precision",
   "",
@@ -258,6 +296,10 @@ const markdown = [
   "|---:|---:|---:|",
   ...reports.map((item) => `| ${item.playerCount} | ${item.ownerNak}/${item.ownerBasicRolls} (${pct(item.ownerNakRate)}) | ${item.nonOwnerNak}/${item.nonOwnerBasicRolls} (${pct(item.nonOwnerNakRate)}) |`),
   "",
+  "## Incomplete seeds",
+  "",
+  ...incompleteMarkdown,
+  "",
 ].join("\n");
 
 mkdirSync(outputDir, { recursive: true });
@@ -266,5 +308,8 @@ writeFileSync(join(outputDir, `${baseName}.json`), `${JSON.stringify(report, nul
 writeFileSync(join(outputDir, `${baseName}.md`), `${markdown}\n`, "utf-8");
 console.log(markdown);
 console.error(`[s16-precision] total elapsed ${report.elapsedSeconds.toFixed(1)}s`);
+if (allIncompleteDetails.length > 0) {
+  console.error(`[s16-precision] incomplete seeds: ${allIncompleteDetails.map((item) => `${item.playerCount}p:${item.seed}`).join(", ")}`);
+}
 
 if (reports.some((item) => item.incompleteGames > 0)) process.exitCode = 1;
