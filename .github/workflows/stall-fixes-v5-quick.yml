@@ -1,4 +1,4 @@
-name: Stall Fix V5 Quick
+name: Stall Fix V6 Quick
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
           const cases = [
             { seed: '1301484', playerCount: 2, label: 'A10-terminal-1' },
             { seed: '1301794', playerCount: 2, label: 'A10-terminal-2' },
-            { seed: '1402130', playerCount: 3, label: 'A05-to-A10-no-waiting' },
+            { seed: '1402130', playerCount: 3, label: 'A10-selection-invalidated' },
             { seed: '1400473', playerCount: 3, label: 'P14-A13-wormhole-lap' },
           ];
           for (const item of cases) {
