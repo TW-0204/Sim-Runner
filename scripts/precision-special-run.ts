@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function argument(name: string) {
@@ -28,19 +28,6 @@ if (!expectedCondition[augmentId]) {
   throw new Error(`Unsupported Special augment: ${augmentId}. Use P02, P04, P14, or P16.`);
 }
 
-const gamePath = join(process.cwd(), "src/lib/simulation/game.ts");
-const originalGameSource = readFileSync(gamePath, "utf-8");
-const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;\n      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? \"1\");\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForce = Boolean(forcedAugmentId) && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;\n      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(visible);`;
-
-if (!originalGameSource.includes(selectionBlock)) {
-  throw new Error("Could not locate the simulation augment-selection block. Precision injection aborted.");
-}
-
-process.env.SIM_FORCED_AUGMENT_ID = augmentId;
-process.env.SIM_FORCED_ACQUISITION_INDEX = String(acquisitionIndex);
-writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
-
 type PlayerCount = 2 | 3 | 4;
 type PlayerReport = {
   playerCount: PlayerCount;
@@ -62,7 +49,7 @@ const specialIds = new Set(["P02", "P03", "P04", "P14", "P16"]);
 const reports: PlayerReport[] = [];
 const startedAt = Date.now();
 
-try {
+{
   const [{ getBalanceRuleset }, { simulateGame }] = await Promise.all([
     import("@/lib/simulation/rulesets"),
     import("@/lib/simulation/game"),
@@ -87,6 +74,8 @@ try {
         ruleset,
         playerCount,
         maxActions: 20_000,
+        forcedAugmentId: augmentId,
+        forcedAcquisitionIndex: acquisitionIndex,
       });
       attempts += 1;
 
@@ -141,10 +130,6 @@ try {
     });
     console.error(`[precision] ${augmentId} ${playerCount}p complete: owner ${(ownerWinRate * 100).toFixed(2)}%, incomplete ${incompleteGames}`);
   }
-} finally {
-  writeFileSync(gamePath, originalGameSource, "utf-8");
-  delete process.env.SIM_FORCED_AUGMENT_ID;
-  delete process.env.SIM_FORCED_ACQUISITION_INDEX;
 }
 
 const report = {

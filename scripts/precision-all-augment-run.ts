@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function argument(name: string) {
@@ -22,14 +22,6 @@ if (!augmentId) throw new Error("--augment is required.");
 const games = positiveInteger("games", argument("games"), 500);
 const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 30);
 const outputDir = argument("output-dir") ?? "precision-all-results";
-
-const gamePath = join(process.cwd(), "src/lib/simulation/game.ts");
-const originalGameSource = readFileSync(gamePath, "utf-8");
-const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const selectedId = context.rng.augment.pick(visible);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);`;
-const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;\n      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? \"1\");\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const shouldForce = Boolean(forcedAugmentId) && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;\n      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(visible);`;
-if (!originalGameSource.includes(selectionBlock)) throw new Error("Could not locate augment-selection block.");
-writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
-process.env.SIM_FORCED_AUGMENT_ID = augmentId;
 
 const specialConditions: Record<string, string> = {
   P02: "MOONWALK",
@@ -61,7 +53,7 @@ type Report = {
 
 const reports: Report[] = [];
 const startedAt = Date.now();
-try {
+{
   const [{ AUGMENTS, AUGMENT_BY_ID }, { getBalanceRuleset }, { simulateGame }] = await Promise.all([
     import("@/lib/augments/catalog"),
     import("@/lib/simulation/rulesets"),
@@ -76,7 +68,6 @@ try {
   const ruleset = getBalanceRuleset("two-aug-start-r4-special-slots-v2");
 
   for (const acquisitionIndex of acquisitionIndexes) {
-    process.env.SIM_FORCED_ACQUISITION_INDEX = String(acquisitionIndex);
     for (const playerCount of [2, 3, 4] as const) {
       let validGames = 0;
       let attempts = 0;
@@ -92,7 +83,15 @@ try {
 
       while (validGames < games && attempts < maxAttempts) {
         const seed = seedBase + attempts;
-        const result = simulateGame({ seed: String(seed), ruleset, playerCount, maxActions: 20_000, maxRounds });
+        const result = simulateGame({
+          seed: String(seed),
+          ruleset,
+          playerCount,
+          maxActions: 20_000,
+          maxRounds,
+          forcedAugmentId: augmentId,
+          forcedAcquisitionIndex: acquisitionIndex,
+        });
         attempts += 1;
         const forcedSeat = seed % playerCount + 1;
         const forcedUserId = `sim-p${forcedSeat}`;
@@ -183,8 +182,4 @@ try {
   ].join("\n");
   writeFileSync(join(outputDir, `precision-${augmentId}.md`), `${markdown}\n`, "utf-8");
   console.log(markdown);
-} finally {
-  writeFileSync(gamePath, originalGameSource, "utf-8");
-  delete process.env.SIM_FORCED_AUGMENT_ID;
-  delete process.env.SIM_FORCED_ACQUISITION_INDEX;
 }
