@@ -45,6 +45,24 @@ function clearFinishedPlagueTurn(
 }
 
 /**
+ * Idempotent legacy tail shared by every transition boundary.
+ *
+ * Keeping these cross-cutting rules in the game layer prevents simulators/clients
+ * from carrying their own plague cleanup or passive-win mutations. It is safe to
+ * call after a transition that already passed through the full hook lifecycle.
+ */
+export function applyCrossTransitionLegacyRules(
+  before: GameEngineState,
+  after: GameEngineState,
+  context: GameLifecycleContext,
+) {
+  const beforeTurnOwner = turnOwnerUserId(before);
+  const afterTurnOwner = turnOwnerUserId(after);
+  clearFinishedPlagueTurn(before, after, beforeTurnOwner, afterTurnOwner);
+  return applyPassiveSpecialWinner(after, context.ownedByUser);
+}
+
+/**
  * Canonical cross-cutting lifecycle for one completed game-state transition.
  *
  * Low-level rule functions should not know every augment that may react to their
@@ -123,6 +141,5 @@ export function applyPostTransitionAugmentLifecycle(
   }
 
   next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
-  clearFinishedPlagueTurn(before, next, beforeTurnOwner, turnOwnerUserId(next));
-  return applyPassiveSpecialWinner(next, context.ownedByUser);
+  return applyCrossTransitionLegacyRules(before, next, context);
 }
