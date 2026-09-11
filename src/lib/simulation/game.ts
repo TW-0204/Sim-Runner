@@ -1,6 +1,5 @@
 import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
 import {
-  armA04OnAcquisition,
   canGrantFaceExtraRoll,
   queueA04BonusForNextBasic,
   isGroupUsableWithAugments,
@@ -8,10 +7,7 @@ import {
 } from "@/lib/augments/effects";
 import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
 import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
-import {
-  applyBetrayalAcquisitionLifecycle,
-  initializeAcquiredPieceSetup,
-} from "@/lib/game/augment-lifecycle";
+import { applyAugmentAcquisitionLifecycle } from "@/lib/game/augment-lifecycle";
 import { assertGameStateInvariants } from "@/lib/game/invariants";
 import {
   markAthleteDisqualified,
@@ -25,16 +21,11 @@ import {
   applyBombExplosion,
   applyGachaMachine,
   applyGrandUnity,
-  applyGreatUpheaval,
   applyGravityExplosion,
   applyMarginExit,
   applyMarginReturn,
-  applyMoonwalkAcquisitionScatter,
   applyMove,
   applyWormholeTurn,
-  applyTurtleAndHarePlacement,
-  armGachaMachineOnAcquisition,
-  armWormholeOnAcquisition,
   applyRelocationChoice,
   applyStackChoice,
   createInitialEngine,
@@ -364,55 +355,26 @@ function applyDueAugmentEvents(context: SimulationContext) {
         : selectedId;
 
       context.ownedByUser[offer.userId] = upgradeOwnedList(context.ownedByUser[offer.userId] ?? [], acquiredId);
-      if (acquiredId === "P02") context.engine = applyMoonwalkAcquisitionScatter(context.engine, offer.userId, context.rng.effect.next);
-      context.engine.augmentRuntime ??= {};
-      context.engine.augmentRuntime[offer.userId] ??= {};
-      const ideaRuntime = context.engine.augmentRuntime[offer.userId];
-      if (a04UpgradePendingByUser[offer.userId]) delete ideaRuntime.a04UpgradeNextAugment;
-      if (acquiredId === "A04") armA04OnAcquisition(context.engine, offer.userId);
-      if (acquiredId === "A12") ideaRuntime.walkingTrailSegment = context.rng.effect.int(4);
-      if (acquiredId === "A01") {
-        ideaRuntime.gravityExplosionRound = context.engine.round;
-        ideaRuntime.gravityExplosionResolved = false;
-      }
-      if (acquiredId === "A02") armGachaMachineOnAcquisition(context.engine, offer.userId);
-      if (acquiredId === "A08") {
-        const beforeUpheaval = context.engine;
-        const afterUpheaval = applyGreatUpheaval(
-          beforeUpheaval,
+      const acquisitionLifecycle = applyAugmentAcquisitionLifecycle({
+        engine: context.engine,
+        userId: offer.userId,
+        augmentId: acquiredId,
+        ownedByUser: context.ownedByUser,
+        setupsByUser: context.setupsByUser,
+        consumeA04UpgradePending: Boolean(a04UpgradePendingByUser[offer.userId]),
+        randomNext: () => context.rng.effect.next(),
+        randomInt: (maxExclusive) => context.rng.effect.int(maxExclusive),
+      });
+      if (acquisitionLifecycle.immediateTransitionFrom) {
+        commitTransition(
+          context,
+          acquisitionLifecycle.immediateTransitionFrom,
+          acquisitionLifecycle.engine,
           offer.userId,
-          context.ownedByUser,
-          context.setupsByUser,
-          context.rng.effect.next,
+          "augment_event",
         );
-        commitTransition(context, beforeUpheaval, afterUpheaval, offer.userId, "augment_event");
-      }
-      if (acquiredId === "A13") armWormholeOnAcquisition(context.engine, offer.userId);
-      if (acquiredId === "A15") {
-        const owner = context.engine.players.find((candidate) => candidate.userId === offer.userId);
-        const waiting = owner?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
-        if (waiting.length) {
-          const target = waiting[context.rng.effect.int(waiting.length)] ?? waiting[0];
-          context.engine = applyTurtleAndHarePlacement(context.engine, offer.userId, target.id);
-        }
-      }
-      if (acquiredId === "A10") {
-        const betrayal = applyBetrayalAcquisitionLifecycle(
-          context.engine,
-          offer.userId,
-          context.ownedByUser,
-          context.setupsByUser,
-          context.rng.effect.next,
-        );
-        context.engine = betrayal.engine;
-      }
-      if (acquiredId === "G16" || acquiredId === "P14") {
-        initializeAcquiredPieceSetup(
-          context.engine,
-          offer.userId,
-          acquiredId,
-          context.setupsByUser,
-        );
+      } else {
+        context.engine = acquisitionLifecycle.engine;
       }
 
       context.acquisitions.push({
