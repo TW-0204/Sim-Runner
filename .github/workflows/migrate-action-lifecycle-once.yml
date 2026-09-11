@@ -1,0 +1,38 @@
+name: migrate action lifecycle once
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+    paths:
+      - 'archive/migrations/refactor-action-lifecycle-once.py'
+      - '.github/workflows/migrate-action-lifecycle-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-v11
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Move action execution into game lifecycle
+        run: python archive/migrations/refactor-action-lifecycle-once.py
+      - name: Run canonical smoke
+        run: bash scripts/run-s16-p10-smoke.sh
+      - name: Run 30 canonical regressions
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
+      - name: Commit action lifecycle refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/simulation/game.ts
+          git commit -m "refactor: route simulation actions through game lifecycle"
+          git push origin HEAD:refactor/canonical-v11
