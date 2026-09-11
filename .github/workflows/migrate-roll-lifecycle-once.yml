@@ -1,0 +1,40 @@
+name: migrate roll lifecycle once
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+    paths:
+      - 'archive/migrations/roll-lifecycle-once.py'
+      - '.github/workflows/migrate-roll-lifecycle-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-v11
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply roll lifecycle migration
+        run: python archive/migrations/roll-lifecycle-once.py
+      - name: Run runtime registry check
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-runtime-registry-check.ts
+      - name: Run canonical smoke
+        run: bash scripts/run-s16-p10-smoke.sh
+      - name: Run exact regressions
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
+      - name: Commit simulation roll lifecycle connection
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/simulation/game.ts
+          git commit -m "refactor: route simulation rolls through game lifecycle"
+          git push origin HEAD:refactor/canonical-v11
