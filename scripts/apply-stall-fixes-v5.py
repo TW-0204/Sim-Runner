@@ -21,8 +21,8 @@ def replace_once(path: str, old: str, new: str) -> None:
 # Otherwise Asura can replace into Betrayal after the owner has no WAITING piece.
 replace_once(
     "src/lib/simulation/game.ts",
-    '''    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")\n    .filter((augment) => canOffer(augment, phase, ownedIds))\n''',
-    '''    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")\n    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))\n    .filter((augment) => canOffer(augment, phase, ownedIds))\n''',
+    '''    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")\n''',
+    '''    .filter((augment) => augment.id !== "A05" && augment.id !== "A06")\n    .filter((augment) => augment.id !== "A10" || playerHasWaitingPiece(context, userId))\n''',
 )
 
 # Betrayal can transfer the source player's final unfinished piece. In that case the
