@@ -1,0 +1,29 @@
+name: consolidate canonical layout once
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-v11
+          fetch-depth: 0
+      - name: Consolidate canonical layout
+        run: python scripts/consolidate-canonical-once.py
+      - name: Commit consolidation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/consolidate-layout-once.yml
+          git rm -f scripts/consolidate-canonical-once.py
+          git add -A
+          git commit -m "refactor: retire patch stack and canonicalize source layout"
+          git push origin HEAD:refactor/canonical-v11
