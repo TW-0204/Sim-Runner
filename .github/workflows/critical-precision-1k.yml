@@ -1,0 +1,120 @@
+name: Critical Augment Precision 1K
+
+on:
+  push:
+    branches:
+      - experiment/s16
+    paths:
+      - '.github/workflows/critical-precision-1k.yml'
+      - 'scripts/critical-precision-run.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        augment: [A10, A16, P04, P10, P14, P16, P19]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Apply current rule stack
+        run: bash scripts/apply-v3-stack.sh
+
+      - name: Apply Round 30 draw cap
+        run: python scripts/apply-simulation-round-cap.py
+
+      - name: Run forced critical precision
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/critical-precision-run.ts --augment "${{ matrix.augment }}" --games 1000 --max-rounds 30
+
+      - name: Upload augment result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-precision-${{ matrix.augment }}
+          path: critical-precision-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  merge:
+    if: always()
+    needs: precision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: critical-precision-*
+          path: critical-merged
+          merge-multiple: true
+
+      - name: Build merged summary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          files = sorted(Path('critical-merged').glob('precision-*.json'))
+          reports = []
+          total_incomplete = 0
+          for path in files:
+              data = json.loads(path.read_text(encoding='utf-8'))
+              reports.append(data)
+              total_incomplete += sum(row['incompleteGames'] for row in data['reports'])
+
+          lines = [
+              '# Critical Augment Forced Precision 1K',
+              '',
+              f'- augment reports: {len(reports)}/7',
+              f'- total incomplete: {total_incomplete}',
+              '- baseline: equal-share win rate among decisive games',
+              '',
+              '| Augment | Slot | Players | Win | Delta | Draw | Incomplete | Discarded |',
+              '|---|---:|---:|---:|---:|---:|---:|---:|',
+          ]
+          flat = []
+          for data in reports:
+              for row in data['reports']:
+                  flat.append({
+                      'augmentId': data['augmentId'],
+                      'name': data['name'],
+                      **row,
+                  })
+                  win = '—' if row['ownerWinRate'] is None else f"{row['ownerWinRate'] * 100:.2f}%"
+                  delta = '—' if row['deltaPp'] is None else f"{row['deltaPp']:+.2f}%p"
+                  draw = '—' if row['drawRate'] is None else f"{row['drawRate'] * 100:.2f}%"
+                  lines.append(f"| {data['augmentId']} {data['name']} | {row['acquisitionIndex']} | {row['playerCount']} | {win} | {delta} | {draw} | {row['incompleteGames']} | {row['discardedContexts']} |")
+
+          Path('critical-precision-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          Path('critical-precision-summary.json').write_text(json.dumps({
+              'augmentReports': len(reports),
+              'totalIncomplete': total_incomplete,
+              'reports': flat,
+          }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('\n'.join(lines))
+          if len(reports) != 7 or total_incomplete != 0:
+              raise SystemExit(1)
+          PY
+
+      - name: Upload merged summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-precision-merged
+          path: |
+            critical-precision-summary.md
+            critical-precision-summary.json
+          if-no-files-found: warn
+          retention-days: 7
