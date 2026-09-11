@@ -4,6 +4,7 @@ import {
   isGroupUsableWithAugments,
   type PlayerAugmentSetups,
 } from "@/lib/augments/effects";
+import { referencedSetupPieceIds } from "@/lib/augments/setup";
 import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
 import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
 import { applyAugmentAcquisitionLifecycle } from "@/lib/game/augment-lifecycle";
@@ -38,7 +39,10 @@ import {
   normalizeNumberPool,
   splitNumberResult,
 } from "@/lib/game/number-cells";
-import { applyPassiveSpecialWinner } from "@/lib/game/passive-win";
+import {
+  applyCrossTransitionLegacyRules,
+  applyPostTransitionAugmentLifecycle,
+} from "@/lib/game/transition-lifecycle";
 import { baseStepsForFace } from "@/lib/game/roll";
 import {
   godHandChargeCount,
@@ -236,20 +240,46 @@ function commitTransition(
     actorUserId,
     detectG01TriggerBreakdown(before, after, actorUserId, context.ownedByUser),
   );
-  const beforeActor = currentPlayer(before).userId;
-  const afterActor = currentPlayer(after).userId;
-  if (beforeActor !== afterActor) {
-    const runtime = after.augmentRuntime?.[beforeActor];
-    if (runtime?.plagueTurnActive) {
-      runtime.plaguePieceIds = {};
-      runtime.plagueTurnActive = false;
-    }
-  }
-  context.engine = applyPassiveSpecialWinner(after, context.ownedByUser);
+  context.engine = applyCrossTransitionLegacyRules(before, after, context);
   assertGameStateInvariants(context.engine, {
     ownedByUser: context.ownedByUser,
     setupsByUser: context.setupsByUser,
     label: `${actionKind}@${context.actions}`,
+  });
+}
+
+function canonicalizeRawTransition(
+  context: SimulationContext,
+  before: GameEngineState,
+  after: GameEngineState,
+  actorUserId: string,
+  actionKind: SimulationActionKind,
+  event: Readonly<Record<string, unknown>> = {},
+) {
+  return applyPostTransitionAugmentLifecycle(
+    before,
+    after,
+    actorUserId,
+    actionKind,
+    context,
+    event,
+  );
+}
+
+function applyRawTransitionWithoutTelemetry(
+  context: SimulationContext,
+  before: GameEngineState,
+  after: GameEngineState,
+  actorUserId: string,
+  actionKind: SimulationActionKind,
+  label: string,
+  event: Readonly<Record<string, unknown>> = {},
+) {
+  context.engine = canonicalizeRawTransition(context, before, after, actorUserId, actionKind, event);
+  assertGameStateInvariants(context.engine, {
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    label,
   });
 }
 
@@ -355,10 +385,18 @@ function applyDueAugmentEvents(context: SimulationContext) {
         randomInt: (maxExclusive) => context.rng.effect.int(maxExclusive),
       });
       if (acquisitionLifecycle.immediateTransitionFrom) {
-        commitTransition(
+        const acquisitionNext = canonicalizeRawTransition(
           context,
           acquisitionLifecycle.immediateTransitionFrom,
           acquisitionLifecycle.engine,
+          offer.userId,
+          "augment_event",
+          { acquiredAugmentId: acquiredId },
+        );
+        commitTransition(
+          context,
+          acquisitionLifecycle.immediateTransitionFrom,
+          acquisitionNext,
           offer.userId,
           "augment_event",
         );
@@ -398,7 +436,7 @@ function applyDueAugmentEvents(context: SimulationContext) {
     }
     context.appliedAugmentEvents.add(eventIndex);
     const passiveBefore = structuredClone(context.engine);
-    const passiveAfter = applyPassiveSpecialWinner(context.engine, context.ownedByUser);
+    const passiveAfter = applyCrossTransitionLegacyRules(passiveBefore, context.engine, context);
     commitTransition(context, passiveBefore, passiveAfter, currentPlayer(passiveBefore).userId, "augment_event");
     changed = true;
   });
@@ -448,7 +486,15 @@ function maybeUseGachaMachine(context: SimulationContext) {
     context.ownedByUser,
     context.rng.effect.next,
   );
-  commitTransition(context, before, result.engine, actor.userId, "augment_event");
+  const next = canonicalizeRawTransition(
+    context,
+    before,
+    result.engine,
+    actor.userId,
+    "augment_event",
+    { kind: "gacha_machine", augmentId: "A02" },
+  );
+  commitTransition(context, before, next, actor.userId, "augment_event");
   return true;
 }
 
@@ -507,7 +553,15 @@ function maybeUseWormhole(context: SimulationContext) {
   if (!selected) return false;
 
   const before = structuredClone(engine);
-  const next = applyWormholeTurn(engine, actor.userId, selected[0], owned);
+  const rawNext = applyWormholeTurn(engine, actor.userId, selected[0], owned);
+  const next = canonicalizeRawTransition(
+    context,
+    before,
+    rawNext,
+    actor.userId,
+    "wormhole",
+    { groupId: selected[0] },
+  );
   commitTransition(context, before, next, actor.userId, "wormhole");
   return true;
 }
@@ -780,7 +834,7 @@ function resolveCaptureChoice(context: SimulationContext, engine: GameEngineStat
 
   if (decision.kind === "INSURANCE") {
     const setups = actorSetups(context, chooserUserId);
-    const protectedIds = new Set([setups.G16?.pieceId, setups.P14?.pieceId].filter((id): id is string => Boolean(id)));
+    const protectedIds = referencedSetupPieceIds(setups);
     choice = { pieceId: decision.pieceIds.find((id) => !protectedIds.has(id)) ?? decision.pieceIds[0] ?? null };
   } else {
     const target = [...decision.targets].sort((left, right) => right.pieceIds.length - left.pieceIds.length)[0];
@@ -875,43 +929,74 @@ function stepGame(context: SimulationContext) {
   );
   if (automaticEvent.applied) {
     const actorUserId = automaticEvent.actorUserId ?? currentPlayer(automaticBefore).userId;
-    commitTransition(context, automaticBefore, automaticEvent.engine, actorUserId, "augment_event");
+    const automaticNext = canonicalizeRawTransition(
+      context,
+      automaticBefore,
+      automaticEvent.engine,
+      actorUserId,
+      "augment_event",
+      { kind: "automatic_augment_event" },
+    );
+    commitTransition(context, automaticBefore, automaticNext, actorUserId, "augment_event");
     return;
   }
 
-  const returnActor = currentPlayer(context.engine);
-  context.engine = resolveDueWormholeReturns(
-    context.engine,
+  const returnBefore = context.engine;
+  const returnActor = currentPlayer(returnBefore);
+  const returnAfter = resolveDueWormholeReturns(
+    returnBefore,
     returnActor.userId,
     actorOwned(context, returnActor.userId),
     actorSetups(context, returnActor.userId),
     context.rng.effect.next,
   );
+  if (returnAfter !== returnBefore) {
+    applyRawTransitionWithoutTelemetry(
+      context,
+      returnBefore,
+      returnAfter,
+      returnActor.userId,
+      "augment_event",
+      `wormhole-return@${context.actions}`,
+      { kind: "wormhole_return" },
+    );
+  } else {
+    context.engine = returnAfter;
+  }
   if (context.engine.winnerUserId) return;
 
-  const freeze = resolveUniverseFreezeTurn(context.engine);
+  const freezeBefore = context.engine;
+  const freezeActor = currentPlayer(freezeBefore);
+  const freeze = resolveUniverseFreezeTurn(freezeBefore);
   if (freeze.applied) {
-    context.engine = freeze.engine;
-    assertGameStateInvariants(context.engine, {
-      ownedByUser: context.ownedByUser,
-      setupsByUser: context.setupsByUser,
-      label: `universe-freeze@${context.actions}`,
-    });
+    applyRawTransitionWithoutTelemetry(
+      context,
+      freezeBefore,
+      freeze.engine,
+      freezeActor.userId,
+      "augment_event",
+      `universe-freeze@${context.actions}`,
+      { kind: "universe_freeze" },
+    );
     return;
   }
 
-  const vacancyActor = currentPlayer(context.engine);
+  const vacancyBefore = context.engine;
+  const vacancyActor = currentPlayer(vacancyBefore);
   const vacancy = resolveVacancyTurn(
-    context.engine,
+    vacancyBefore,
     actorOwned(context, vacancyActor.userId),
   );
   if (vacancy.applied) {
-    context.engine = vacancy.engine;
-    assertGameStateInvariants(context.engine, {
-      ownedByUser: context.ownedByUser,
-      setupsByUser: context.setupsByUser,
-      label: `vacancy@${context.actions}`,
-    });
+    applyRawTransitionWithoutTelemetry(
+      context,
+      vacancyBefore,
+      vacancy.engine,
+      vacancyActor.userId,
+      "augment_event",
+      `vacancy@${context.actions}`,
+      { kind: "vacancy" },
+    );
     return;
   }
 
@@ -988,7 +1073,15 @@ function stepGame(context: SimulationContext) {
         moveOwnedIdsForAthlete(owned),
       );
       if (discarded !== before) {
-        commitTransition(context, before, discarded, userId, "move");
+        const finalizedDiscard = canonicalizeRawTransition(
+          context,
+          before,
+          discarded,
+          userId,
+          "move",
+          { kind: "discard_no_legal_move" },
+        );
+        commitTransition(context, before, finalizedDiscard, userId, "move");
         return;
       }
       throw new Error(`Engine exposed legal moves that the simulator could not execute for ${userId} at turn ${context.engine.turnNumber}.`);
