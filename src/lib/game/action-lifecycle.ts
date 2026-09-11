@@ -58,11 +58,12 @@ export function finalizeAction(
     engine: next,
     before,
     ownerUserId: actorUserId,
+    actorUserId,
     ownedByUser: context.ownedByUser,
     setupsByUser: context.setupsByUser,
     actionKind,
   });
-  repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
+  next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
   return next;
 }
 
@@ -89,11 +90,16 @@ export function executeMoveAction(
     engine: next,
     before: turnSnapshot,
     ownerUserId: userId,
+    actorUserId: userId,
     ownedByUser: context.ownedByUser,
     setupsByUser: context.setupsByUser,
     actionKind: "move",
+    event: {
+      groupId: args.groupId,
+      resultId: args.resultId,
+    },
   });
-  repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
+  next = repairInvalidAugmentSetups(next, context.ownedByUser, context.setupsByUser);
   next = markNumberSplitSibling(engine, next, userId, args.groupId, args.resultId);
   next = maybePauseSelfRelianceAfterMovement(turnSnapshot, next, userId, owned);
   next = maybePauseCaptureChoices(turnSnapshot, next, {
