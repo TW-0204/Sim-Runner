@@ -16,11 +16,19 @@ const selectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n     
 
 const forcedSelectionBlock = `      const visible = offer.offerIds.slice(0, 3);\n      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);\n      if (!player) throw new Error(\`Missing simulation player \${offer.userId}.\`);\n      const currentlyEligible = visible.filter((id) => id !== \"A10\" || playerHasWaitingPiece(context, offer.userId));\n      const forcedAugmentId = process.env.SIM_FORCED_AUGMENT_ID;\n      const forcedAcquisitionIndex = Number(process.env.SIM_FORCED_ACQUISITION_INDEX ?? \"1\");\n      const numericSeed = Number(context.seed);\n      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;\n      const forceEligible = forcedAugmentId !== \"A10\" || playerHasWaitingPiece(context, offer.userId);\n      const shouldForce = Boolean(forcedAugmentId) && forceEligible && eventIndex + 1 === forcedAcquisitionIndex && player.seat === forcedSeat;\n      const selectedId = shouldForce ? forcedAugmentId! : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);`;
 
-if (!originalGameSource.includes(selectionBlock)) {
+let instrumentedSource = originalGameSource.replace(selectionBlock, forcedSelectionBlock);
+if (instrumentedSource === originalGameSource) {
   throw new Error("Could not locate post-v10 augment-selection block. Apply the current v3 stack before running diagnostics.");
 }
 
-writeFileSync(gamePath, originalGameSource.replace(selectionBlock, forcedSelectionBlock), "utf-8");
+const transitionNeedle = `  context.engine = after;\n}\n\nfunction applyDueAugmentEvents`;
+const transitionReplacement = `  const traceUserId = process.env.SIM_TRACE_USER_ID;\n  if (traceUserId) {\n    const beforePlayer = before.players.find((candidate) => candidate.userId === traceUserId);\n    const afterPlayer = after.players.find((candidate) => candidate.userId === traceUserId);\n    const summarize = (player: typeof beforePlayer) => player?.pieces.map((piece) => ({\n      id: piece.id,\n      ownerUserId: piece.ownerUserId,\n      status: piece.status,\n      node: piece.node,\n      groupId: piece.groupId,\n      hasEntered: piece.hasEntered,\n      betrayalOriginalOwnerUserId: piece.betrayalOriginalOwnerUserId ?? null,\n    })) ?? [];\n    const trace = ((globalThis as any).__criticalTrace ??= []);\n    trace.push({\n      action: context.actions,\n      actionKind,\n      p14PieceId: context.setupsByUser[traceUserId]?.P14?.pieceId ?? null,\n      owned: [...(context.ownedByUser[traceUserId] ?? [])],\n      before: {\n        round: before.round, turnNumber: before.turnNumber, stage: before.stage,\n        lastAction: before.lastAction, pieces: summarize(beforePlayer),\n        results: structuredClone(before.results), pendingRolls: [...before.pendingRolls],\n        runtime: structuredClone(before.augmentRuntime?.[traceUserId] ?? null),\n      },\n      after: {\n        round: after.round, turnNumber: after.turnNumber, stage: after.stage,\n        lastAction: after.lastAction, pieces: summarize(afterPlayer),\n        results: structuredClone(after.results), pendingRolls: [...after.pendingRolls],\n        runtime: structuredClone(after.augmentRuntime?.[traceUserId] ?? null),\n      },\n    });\n  }\n  context.engine = after;\n}\n\nfunction applyDueAugmentEvents`;
+if (!instrumentedSource.includes(transitionNeedle)) {
+  throw new Error("Could not locate commitTransition tail for trace instrumentation.");
+}
+instrumentedSource = instrumentedSource.replace(transitionNeedle, transitionReplacement);
+
+writeFileSync(gamePath, instrumentedSource, "utf-8");
 process.env.SIM_FORCED_ACQUISITION_INDEX = "1";
 
 try {
@@ -36,6 +44,9 @@ try {
     const numericSeed = Number(item.seed);
     const forcedSeat = numericSeed % item.playerCount + 1;
     const forcedUserId = `sim-p${forcedSeat}`;
+    process.env.SIM_TRACE_USER_ID = forcedUserId;
+    (globalThis as any).__criticalTrace = [];
+
     const result = simulateGame({
       seed: item.seed,
       ruleset,
@@ -63,6 +74,7 @@ try {
       ownedByUser: result.failureDiagnostics?.ownedByUser ?? null,
       setupsByUser: result.failureDiagnostics?.setupsByUser ?? null,
       engine: engine ?? null,
+      trace: structuredClone((globalThis as any).__criticalTrace ?? []),
     });
   }
 
@@ -87,4 +99,6 @@ try {
   writeFileSync(gamePath, originalGameSource, "utf-8");
   delete process.env.SIM_FORCED_AUGMENT_ID;
   delete process.env.SIM_FORCED_ACQUISITION_INDEX;
+  delete process.env.SIM_TRACE_USER_ID;
+  delete (globalThis as any).__criticalTrace;
 }
