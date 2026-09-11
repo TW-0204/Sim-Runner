@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
 
+# Re-run marker: stall-fix v8 validated on the 2p/3p/4p 9K zero-stall smoke.
 jobs:
   batch:
     name: natural300k (${{ matrix.player_count }}p #${{ matrix.batch_id }})
