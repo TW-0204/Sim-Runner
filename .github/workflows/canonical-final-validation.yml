@@ -1,0 +1,186 @@
+name: Canonical Final Validation
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+    paths:
+      - '.github/workflows/canonical-final-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Canonical smoke
+        run: bash scripts/run-s16-p10-smoke.sh
+      - name: 30 exact regressions
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
+
+  critical:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        augment: [A10, A16, P04, P10, P14, P16, P19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Forced critical precision 1K
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/critical-precision-run.ts --augment "${{ matrix.augment }}" --games 1000 --max-rounds 30
+      - name: Upload critical result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-critical-${{ matrix.augment }}
+          path: critical-precision-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  critical-summary:
+    needs: critical
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-critical-*
+          path: critical-merged
+          merge-multiple: true
+      - name: Verify zero incomplete and build summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files = sorted(Path('critical-merged').glob('precision-*.json'))
+          reports = []
+          total_incomplete = 0
+          for path in files:
+              data = json.loads(path.read_text(encoding='utf-8'))
+              reports.append(data)
+              total_incomplete += sum(row['incompleteGames'] for row in data['reports'])
+          rows = []
+          for data in reports:
+              for row in data['reports']:
+                  rows.append({'augmentId': data['augmentId'], 'name': data['name'], **row})
+          out = {'augmentReports': len(reports), 'totalIncomplete': total_incomplete, 'reports': rows}
+          Path('final-critical-summary.json').write_text(json.dumps(out, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps({'augmentReports': len(reports), 'totalIncomplete': total_incomplete}, ensure_ascii=False))
+          if len(reports) != 7 or total_incomplete != 0:
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-critical-summary
+          path: final-critical-summary.json
+          retention-days: 7
+
+  s16-3k:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: S16 forced-owner precision 3K
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts --games 3000 --output-dir final-results/s16
+      - name: Upload S16 3K result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-s16-3k
+          path: final-results/s16
+          if-no-files-found: error
+          retention-days: 7
+
+  natural:
+    needs: [critical-summary, s16-3k]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        include:
+          - { player_count: 2, batch_id: 1, seed_start: 800000 }
+          - { player_count: 2, batch_id: 2, seed_start: 806000 }
+          - { player_count: 2, batch_id: 3, seed_start: 812000 }
+          - { player_count: 2, batch_id: 4, seed_start: 818000 }
+          - { player_count: 2, batch_id: 5, seed_start: 824000 }
+          - { player_count: 3, batch_id: 1, seed_start: 900000 }
+          - { player_count: 3, batch_id: 2, seed_start: 906000 }
+          - { player_count: 3, batch_id: 3, seed_start: 912000 }
+          - { player_count: 3, batch_id: 4, seed_start: 918000 }
+          - { player_count: 3, batch_id: 5, seed_start: 924000 }
+          - { player_count: 4, batch_id: 1, seed_start: 1000000 }
+          - { player_count: 4, batch_id: 2, seed_start: 1006000 }
+          - { player_count: 4, batch_id: 3, seed_start: 1012000 }
+          - { player_count: 4, batch_id: 4, seed_start: 1018000 }
+          - { player_count: 4, batch_id: 5, seed_start: 1024000 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Natural 6K batch
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 6000
+          --max-rounds 30
+          --output-dir final-natural-results
+          --fail-on-incomplete
+      - name: Upload natural batch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-natural-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: final-natural-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  natural-summary:
+    needs: natural
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-natural-*
+          path: final-natural-results
+          merge-multiple: true
+      - name: Merge natural 90K
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-merge.ts
+          --input-dir final-natural-results
+          --output-dir final-natural-merged
+          --min-samples 200
+          --expected-batches 5
+      - name: Upload natural 90K summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-natural-90k-summary
+          path: final-natural-merged/
+          if-no-files-found: error
+          retention-days: 7
