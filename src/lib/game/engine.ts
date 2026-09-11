@@ -58,6 +58,7 @@ import {
   reverseMoveOptions,
 } from "./board";
 import { returnPiecesAfterEnemyCapture } from "./capture-return";
+import { rehomeGroupAfterPieceRemoval } from "./group-ownership";
 import { isMoonwalkHome } from "./passive-win";
 import { baseStepsForFace, faceLabel } from "./roll";
 import type {
@@ -793,6 +794,9 @@ function returnFinishedBetrayals(engine: GameEngineState) {
     if (!holder || !originalOwner) throw new Error("배반 말 반환에 필요한 플레이어를 찾지 못했습니다.");
     const index = holder.pieces.findIndex((piece) => piece.id === item.pieceId);
     if (index < 0) continue;
+    const departing = holder.pieces[index];
+    if (!departing) continue;
+    rehomeGroupAfterPieceRemoval(engine, holder.userId, departing.id, departing.groupId);
     const [piece] = holder.pieces.splice(index, 1);
     if (!piece) continue;
 
