@@ -27,6 +27,21 @@ export function isValidPieceSetup(seat: number, payload: unknown): payload is Pi
   return typeof pieceId === "string" && pieceSetupOptions(seat).some((option) => option.pieceId === pieceId);
 }
 
+/**
+ * Returns every piece currently referenced by a registered piece-setup augment.
+ * Simulator/client policy can use this generically (for example, avoid voluntarily
+ * sacrificing a referenced piece) without knowing augment IDs such as G16/P14.
+ */
+export function referencedSetupPieceIds(setups: PlayerAugmentSetups | undefined) {
+  const ids = new Set<string>();
+  if (!setups) return ids;
+  for (const augmentId of registeredPieceSetupAugmentIds()) {
+    const pieceId = setups[augmentId]?.pieceId;
+    if (pieceId) ids.add(pieceId);
+  }
+  return ids;
+}
+
 function statusScore(piece: PieceState) {
   if (piece.status === "FINISHED") return 3;
   if (piece.status === "ON_BOARD") return 2;
