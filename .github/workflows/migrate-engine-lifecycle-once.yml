@@ -1,0 +1,35 @@
+name: migrate engine lifecycle once
+
+on:
+  push:
+    branches:
+      - refactor/canonical-v11
+    paths:
+      - 'archive/migrations/refactor-engine-lifecycle-once.py'
+      - '.github/workflows/migrate-engine-lifecycle-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-v11
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply structural lifecycle migration
+        run: python archive/migrations/refactor-engine-lifecycle-once.py
+      - name: Verify canonical smoke before commit
+        run: bash scripts/run-s16-p10-smoke.sh
+      - name: Commit lifecycle refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/simulation/game.ts
+          git commit -m "refactor: move ownership setup lifecycle into game layer"
+          git push origin HEAD:refactor/canonical-v11
