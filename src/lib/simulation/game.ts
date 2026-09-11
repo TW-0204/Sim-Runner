@@ -7,24 +7,22 @@ import {
 import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
 import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
 import { applyAugmentAcquisitionLifecycle } from "@/lib/game/augment-lifecycle";
-import { assertGameStateInvariants } from "@/lib/game/invariants";
 import {
-  markAthleteDisqualified,
-  markAthleteMovement,
-  maybeGrantAthleteExtraRoll,
-  moveOwnedIdsForAthlete,
-  prepareAthleteCoexistence,
-} from "@/lib/game/athlete";
-import { applyCaptureChoice, maybePauseCaptureChoices } from "@/lib/game/capture-choice";
+  executeGrandUnityAction,
+  executeMoveAction,
+  executeRelocationAction,
+  executeStackAction,
+  finalizeAction,
+  type GameMoveArgs,
+} from "@/lib/game/action-lifecycle";
+import { assertGameStateInvariants } from "@/lib/game/invariants";
+import { moveOwnedIdsForAthlete } from "@/lib/game/athlete";
+import { applyCaptureChoice } from "@/lib/game/capture-choice";
 import {
   applyGachaMachine,
-  applyGrandUnity,
   applyMarginExit,
   applyMarginReturn,
-  applyMove,
   applyWormholeTurn,
-  applyRelocationChoice,
-  applyStackChoice,
   createInitialEngine,
   currentPlayer,
   expireWormholeForCurrentRound,
@@ -37,7 +35,6 @@ import {
 } from "@/lib/game/engine";
 import {
   allocateNumberPool,
-  markNumberSplitSibling,
   normalizeNumberPool,
   splitNumberResult,
 } from "@/lib/game/number-cells";
@@ -51,7 +48,7 @@ import {
   rerollDoResult,
   resolveDualRollChoice,
 } from "@/lib/game/roll-flow";
-import { applySelfRelianceSplit, maybePauseSelfRelianceAfterMovement } from "@/lib/game/self-reliance";
+import { applySelfRelianceSplit } from "@/lib/game/self-reliance";
 import { injectTomorrowResult, saveResultForTomorrow } from "@/lib/game/tomorrow";
 import {
   activatePlagueTurnIfNeeded,
@@ -92,7 +89,7 @@ type SimulationOptions = {
   forcedAcquisitionIndex?: number;
 };
 
-type MoveArgs = Parameters<typeof applyMove>[1];
+type MoveArgs = GameMoveArgs;
 
 type SimulationContext = {
   engine: GameEngineState;
@@ -534,80 +531,6 @@ function actorOwned(context: SimulationContext, userId: string) {
 
 function actorSetups(context: SimulationContext, userId: string) {
   return context.setupsByUser[userId] ?? {};
-}
-
-function finalizeAction(
-  before: GameEngineState,
-  after: GameEngineState,
-  actorUserId: string,
-  context: SimulationContext,
-  actionKind: string,
-  postActionUserId = actorUserId,
-) {
-  let next = after;
-  if (next.stage !== "CAPTURE_CHOICE" && actionKind !== "capture_choice") {
-    next = maybeGrantAthleteExtraRoll(before, next, actorUserId, actorOwned(context, actorUserId));
-  }
-  if (next.stage !== "CAPTURE_CHOICE") {
-    next = normalizeNumberPool(next, postActionUserId, actorOwned(context, postActionUserId));
-  }
-  return next;
-}
-
-function executeMoveAction(context: SimulationContext, engineInput: GameEngineState, userId: string, args: MoveArgs) {
-  const turnSnapshot = structuredClone(engineInput);
-  const engine = structuredClone(engineInput);
-  const owned = actorOwned(context, userId);
-  markAthleteMovement(engine, userId, owned);
-  const coexistence = prepareAthleteCoexistence(engine, userId, owned, context.ownedByUser);
-  let next = applyMove(
-    engine,
-    args,
-    moveOwnedIdsForAthlete(owned),
-    actorSetups(context, userId),
-    coexistence.ownedByUser,
-  );
-  coexistence.restore(next);
-  next = markNumberSplitSibling(engine, next, userId, args.groupId, args.resultId);
-  next = maybePauseSelfRelianceAfterMovement(turnSnapshot, next, userId, owned);
-  next = maybePauseCaptureChoices(turnSnapshot, next, {
-    attackerUserId: userId,
-    attackerGroupId: args.groupId,
-    resultId: args.resultId,
-    ownedByUser: context.ownedByUser,
-  });
-  if (next.stage === "CAPTURE_CHOICE") {
-    next.round = turnSnapshot.round;
-    next.turnNumber = turnSnapshot.turnNumber;
-  }
-  return finalizeAction(turnSnapshot, next, userId, context, "move");
-}
-
-function executeStackAction(context: SimulationContext, engineInput: GameEngineState, userId: string, stack: boolean) {
-  const before = structuredClone(engineInput);
-  const engine = structuredClone(engineInput);
-  const owned = actorOwned(context, userId);
-  if (stack) markAthleteDisqualified(engine, userId, owned);
-  const next = applyStackChoice(engine, stack, owned);
-  return finalizeAction(before, next, userId, context, "stack");
-}
-
-function executeRelocationAction(context: SimulationContext, engineInput: GameEngineState, userId: string, groupId: string | null) {
-  const before = structuredClone(engineInput);
-  const engine = structuredClone(engineInput);
-  const owned = actorOwned(context, userId);
-  if (groupId) markAthleteDisqualified(engine, userId, owned);
-  const next = applyRelocationChoice(engine, groupId, owned);
-  return finalizeAction(before, next, userId, context, "relocate");
-}
-
-function executeGrandUnityAction(context: SimulationContext, engineInput: GameEngineState, userId: string, anchorGroupId: string) {
-  const before = structuredClone(engineInput);
-  const engine = structuredClone(engineInput);
-  const owned = actorOwned(context, userId);
-  markAthleteDisqualified(engine, userId, owned);
-  const next = applyGrandUnity(engine, anchorGroupId, owned);
-  return finalizeAction(before, next, userId, context, "grand_unity");
 }
 
 function playerPositionScore(engine: GameEngineState, userId: string, owned: string[], setups: PlayerAugmentSetups) {
