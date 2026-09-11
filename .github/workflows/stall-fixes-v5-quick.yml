@@ -1,4 +1,4 @@
-name: Stall Fix V8 Known Seeds
+name: Stall Fix V8b Known Seeds
 
 on:
   workflow_dispatch:
