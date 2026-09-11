@@ -6,8 +6,10 @@ on:
       - experiment/s16
     paths:
       - '.github/workflows/critical-precision-1k.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
       - 'scripts/critical-precision-run.ts'
-      - 'scripts/apply-stall-fixes-v11.py'
   workflow_dispatch:
 
 permissions:
@@ -29,12 +31,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-
-      - name: Apply current rule stack
-        run: bash scripts/apply-v3-stack.sh
-
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
 
       - name: Run forced critical precision
         run: node --import ./scripts/register-ts-hooks.mjs scripts/critical-precision-run.ts --augment "${{ matrix.augment }}" --games 1000 --max-rounds 30
