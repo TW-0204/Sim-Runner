@@ -1,7 +1,6 @@
 import { AUGMENTS, AUGMENT_BY_ID, type AugmentTier } from "@/lib/augments/catalog";
 import {
   canGrantFaceExtraRoll,
-  queueA04BonusForNextBasic,
   isGroupUsableWithAugments,
   type PlayerAugmentSetups,
 } from "@/lib/augments/effects";
@@ -18,10 +17,8 @@ import {
 } from "@/lib/game/athlete";
 import { applyCaptureChoice, maybePauseCaptureChoices } from "@/lib/game/capture-choice";
 import {
-  applyBombExplosion,
   applyGachaMachine,
   applyGrandUnity,
-  applyGravityExplosion,
   applyMarginExit,
   applyMarginReturn,
   applyMove,
@@ -56,8 +53,16 @@ import {
 } from "@/lib/game/roll-flow";
 import { applySelfRelianceSplit, maybePauseSelfRelianceAfterMovement } from "@/lib/game/self-reliance";
 import { injectTomorrowResult, saveResultForTomorrow } from "@/lib/game/tomorrow";
+import {
+  activatePlagueTurnIfNeeded,
+  injectBombBonusRolls,
+  prepareBasicRollAugments,
+  resolveDueAutomaticAugmentEvent,
+  resolveS16Nak,
+  resolveUniverseFreezeTurn,
+  resolveVacancyTurn,
+} from "@/lib/game/turn-lifecycle";
 import type { EngineMoveTarget } from "@/lib/game/engine";
-import { discardUnusableResults } from "@/lib/game/engine";
 import type { GameEngineState, PieceState, RollToken } from "@/lib/game/types";
 import type { BalanceRuleset } from "./rulesets";
 import { createSimulationRandomStreams, type SimulationRandomStreams } from "./rng";
@@ -415,80 +420,6 @@ function applyDueAugmentEvents(context: SimulationContext) {
   });
 
   return changed;
-}
-
-function advanceTurnForVacancy(engine: GameEngineState) {
-  const seats = engine.players.map((player) => player.seat).sort((a, b) => a - b);
-  const index = seats.indexOf(engine.currentSeat);
-  const nextIndex = (index + 1) % seats.length;
-  if (nextIndex === 0) engine.round += 1;
-  engine.turnNumber += 1;
-  engine.currentSeat = seats[nextIndex];
-  engine.stage = "AWAITING_ROLL";
-  engine.pendingRolls = ["BASIC"];
-  engine.results = [];
-  engine.pendingRollChoice = null;
-  engine.pendingSplitChoice = null;
-  engine.pendingCaptureChoice = null;
-  engine.pendingRelocationChoice = null;
-  engine.pendingStackChoice = null;
-}
-
-function maybeApplyUniverseFreeze(context: SimulationContext) {
-  const engine = context.engine;
-  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
-  const player = currentPlayer(engine);
-  const remaining = engine.augmentRuntime?.[player.userId]?.universeFreezeTurnsRemaining ?? 0;
-  if (remaining <= 0) return false;
-  const next = structuredClone(engine);
-  next.augmentRuntime ??= {};
-  next.augmentRuntime[player.userId] ??= {};
-  next.augmentRuntime[player.userId].universeFreezeTurnsRemaining = remaining - 1;
-  advanceTurnForVacancy(next);
-  next.lastAction = `${player.displayName}: 우주의 중심 · 이동 정지`;
-  context.engine = next;
-  return true;
-}
-
-function maybeApplyVacancySkip(context: SimulationContext) {
-  const engine = context.engine;
-  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
-  const player = currentPlayer(engine);
-  const owned = context.ownedByUser[player.userId] ?? [];
-  if (!owned.includes("S13")) return false;
-
-  const next = structuredClone(engine);
-  next.augmentRuntime ??= {};
-  next.augmentRuntime[player.userId] ??= {};
-  const runtime = next.augmentRuntime[player.userId];
-  if (!runtime.vacancyInitialized) {
-    runtime.vacancyInitialized = true;
-    runtime.vacancySkipsRemaining = 2;
-  }
-  const remaining = runtime.vacancySkipsRemaining ?? 0;
-  if (remaining <= 0) {
-    if (runtime.vacancyReturnBonusPending && !runtime.vacancyReturnBonusGranted) {
-      runtime.vacancyReturnBonusPending = false;
-      runtime.vacancyReturnBonusGranted = true;
-      next.pendingRolls.push("AUGMENT");
-      next.lastAction = `${player.displayName}: 자리비움 복귀 · 추가 던지기 1회`;
-      context.engine = next;
-      return true;
-    }
-    return false;
-  }
-
-  runtime.vacancySkipsRemaining = remaining - 1;
-  const remainingAfter = runtime.vacancySkipsRemaining;
-  if (remainingAfter <= 0) runtime.vacancyReturnBonusPending = true;
-  const afterExpiry = expireWormholeForCurrentRound(next, player.userId, owned);
-  advanceTurnForVacancy(afterExpiry);
-  const following = currentPlayer(afterExpiry);
-  afterExpiry.lastAction = remainingAfter > 0
-    ? `${player.displayName}: 자리비움 · 턴 스킵 (${remainingAfter}회 남음) · ${following.displayName}의 턴`
-    : `${player.displayName}: 자리비움 종료 · 다음 자기 턴 추가 던지기 1회 · 이후 전진 이동 +1 · ${following.displayName}의 턴`;
-  context.engine = afterExpiry;
-  return true;
 }
 
 function maybeUseGachaMachine(context: SimulationContext) {
@@ -903,40 +834,20 @@ function executeRoll(context: SimulationContext, engine: GameEngineState, userId
   const owned = actorOwned(context, userId);
   const before = structuredClone(engine);
 
-  const nakActive = Object.values(context.ownedByUser).some((ids) => ids.includes("S16"));
-  if (engine.pendingRolls[0] === "BASIC" && nakActive) {
+  const nak = resolveS16Nak(
+    engine,
+    userId,
+    context.ownedByUser,
+    actorSetups(context, userId),
+    () => context.rng.effect.next(),
+    () => nextTokenId(context, "nak-compensation"),
+  );
+  if (nak.checked) {
     context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;
   }
-  if (engine.pendingRolls[0] === "BASIC" && nakActive && context.rng.effect.next() < 0.05) {
+  if (nak.occurred) {
     context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
-    const next = structuredClone(engine);
-    next.pendingRolls.shift();
-    const actorName = currentPlayer(next).displayName;
-    if (!owned.includes("S16") && next.pendingRolls.length === 0) {
-      discardUnusableResults(next, owned, actorSetups(context, userId));
-    }
-    if (owned.includes("S16")) {
-      next.results.push({
-        id: nextTokenId(context, "nak-compensation"),
-        face: "MOVE1",
-        baseSteps: 1,
-        finalSteps: 1,
-        source: "AUGMENT",
-        suppressMovementBonuses: true,
-      });
-      next.stage = "MOVING";
-      next.lastAction = `${actorName}: 낙! · 1칸 이동권`;
-    } else if (next.pendingRolls.length > 0) {
-      next.stage = "AWAITING_ROLL";
-      next.lastAction = `${actorName}: 낙!`;
-    } else if (next.results.length > 0) {
-      next.stage = "MOVING";
-      next.lastAction = `${actorName}: 낙!`;
-    } else {
-      advanceTurnForVacancy(next);
-      next.lastAction = `${actorName}: 낙! · ${currentPlayer(next).displayName}의 턴`;
-    }
-    return finalizeAction(before, next, userId, context, "roll");
+    return finalizeAction(before, nak.engine, userId, context, "roll");
   }
   if (engine.pendingRolls[0] === "BASIC" && owned.includes("P19") && godHandChargeCount(engine, userId, owned) > 0) {
     const next = applyGodHandRoll(engine, "MO", nextTokenId(context, "god-hand"), owned, actorSetups(context, userId));
@@ -1037,57 +948,30 @@ function resolveSplitChoice(context: SimulationContext, engine: GameEngineState,
   return finalizeAction(before, next, userId, context, "split");
 }
 
-function maybeApplyBombExplosion(context: SimulationContext) {
-  if (context.engine.round < 6) return false;
-  const owners = context.engine.players
-    .filter((player) => (context.ownedByUser[player.userId] ?? []).includes("A07"))
-    .filter((player) => !context.engine.augmentRuntime?.[player.userId]?.bombResolved)
-    .map((player) => player.userId);
-  if (!owners.length) return false;
-  const before = context.engine;
-  const result = applyBombExplosion(before, owners, context.ownedByUser);
-  context.engine = applyPassiveSpecialWinner(result.engine, context.ownedByUser);
-  commitTransition(context, before, context.engine, owners[0], "augment_event");
-  return true;
-}
-
-function injectBombBonusRolls(engineInput: GameEngineState, userId: string, ownedIds: string[]) {
-  if (!ownedIds.includes("A07") || engineInput.stage !== "AWAITING_ROLL") return engineInput;
-  const pending = engineInput.augmentRuntime?.[userId]?.bombBonusRollsPending ?? 0;
-  if (pending <= 0) return engineInput;
-  const engine = structuredClone(engineInput);
-  engine.augmentRuntime ??= {};
-  engine.augmentRuntime[userId] ??= {};
-  engine.augmentRuntime[userId].bombBonusRollsPending = 0;
-  for (let index = 0; index < pending; index += 1) engine.pendingRolls.push("AUGMENT");
-  return engine;
-}
-
-function maybeApplyGravityExplosion(context: SimulationContext) {
-  for (const player of context.engine.players) {
-    if (!(context.ownedByUser[player.userId] ?? []).includes("A01")) continue;
-    const runtime = context.engine.augmentRuntime?.[player.userId];
-    if (runtime?.gravityExplosionRound == null) continue;
-    if (context.engine.round < runtime.gravityExplosionRound) continue;
-    const before = context.engine;
-    const next = applyGravityExplosion(before, player.userId, context.ownedByUser, context.rng.effect.next);
-    commitTransition(context, before, next, player.userId, "augment_event");
-    return true;
-  }
-  return false;
-}
-
 function stepGame(context: SimulationContext) {
   if (applyDueAugmentEvents(context)) return;
   if (context.engine.winnerUserId) return;
-  const turnOwner = currentPlayer(context.engine);
-  const turnRuntime = context.engine.augmentRuntime?.[turnOwner.userId];
-  if (turnRuntime && Object.keys(turnRuntime.plaguePieceIds ?? {}).length > 0 && turnRuntime.plagueTurnActive !== true) {
-    turnRuntime.plagueTurnActive = true;
+  const plagueBefore = context.engine;
+  context.engine = activatePlagueTurnIfNeeded(context.engine);
+  if (context.engine !== plagueBefore) {
+    assertGameStateInvariants(context.engine, {
+      ownedByUser: context.ownedByUser,
+      setupsByUser: context.setupsByUser,
+      label: `plague-turn@${context.actions}`,
+    });
   }
-  if (maybeApplyBombExplosion(context)) return;
-  if (context.engine.winnerUserId) return;
-  if (maybeApplyGravityExplosion(context)) return;
+
+  const automaticBefore = context.engine;
+  const automaticEvent = resolveDueAutomaticAugmentEvent(
+    automaticBefore,
+    context.ownedByUser,
+    () => context.rng.effect.next(),
+  );
+  if (automaticEvent.applied) {
+    const actorUserId = automaticEvent.actorUserId ?? currentPlayer(automaticBefore).userId;
+    commitTransition(context, automaticBefore, automaticEvent.engine, actorUserId, "augment_event");
+    return;
+  }
 
   const returnActor = currentPlayer(context.engine);
   context.engine = resolveDueWormholeReturns(
@@ -1098,8 +982,32 @@ function stepGame(context: SimulationContext) {
     context.rng.effect.next,
   );
   if (context.engine.winnerUserId) return;
-  if (maybeApplyUniverseFreeze(context)) return;
-  if (maybeApplyVacancySkip(context)) return;
+
+  const freeze = resolveUniverseFreezeTurn(context.engine);
+  if (freeze.applied) {
+    context.engine = freeze.engine;
+    assertGameStateInvariants(context.engine, {
+      ownedByUser: context.ownedByUser,
+      setupsByUser: context.setupsByUser,
+      label: `universe-freeze@${context.actions}`,
+    });
+    return;
+  }
+
+  const vacancyActor = currentPlayer(context.engine);
+  const vacancy = resolveVacancyTurn(
+    context.engine,
+    actorOwned(context, vacancyActor.userId),
+  );
+  if (vacancy.applied) {
+    context.engine = vacancy.engine;
+    assertGameStateInvariants(context.engine, {
+      ownedByUser: context.ownedByUser,
+      setupsByUser: context.setupsByUser,
+      label: `vacancy@${context.actions}`,
+    });
+    return;
+  }
 
   const actorBeforeInjection = currentPlayer(context.engine);
   if (context.engine.stage !== "CAPTURE_CHOICE") {
@@ -1114,7 +1022,7 @@ function stepGame(context: SimulationContext) {
     if (maybeUseGachaMachine(context)) return;
     if (maybeUseWormhole(context)) return;
     if (maybeUseMarginExit(context)) return;
-    queueA04BonusForNextBasic(context.engine, userId, actorOwned(context, userId));
+    prepareBasicRollAugments(context.engine, userId, actorOwned(context, userId));
     const before = context.engine;
     const grandUnity = maybeUseGrandUnity(context, before, userId);
     const next = grandUnity ?? executeRoll(context, before, userId);

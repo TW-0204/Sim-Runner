@@ -881,7 +881,7 @@ function checkBasicWinner(engine: GameEngineState, ownedIds: string[]) {
   return null;
 }
 
-function advanceTurn(engine: GameEngineState) {
+export function advanceTurn(engine: GameEngineState) {
   if (engine.winnerUserId) return;
   const seats = engine.players.map((player) => player.seat).sort((a, b) => a - b);
   const index = seats.indexOf(engine.currentSeat);
