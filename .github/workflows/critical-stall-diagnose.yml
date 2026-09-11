@@ -6,6 +6,9 @@ on:
       - experiment/s16
     paths:
       - '.github/workflows/critical-stall-diagnose.yml'
+      - 'src/lib/augments/**'
+      - 'src/lib/game/**'
+      - 'src/lib/simulation/**'
       - 'scripts/critical-stall-diagnose.ts'
   workflow_dispatch:
 
@@ -25,13 +28,7 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: Apply current rule stack
-        run: bash scripts/apply-v3-stack.sh
-
-      - name: Apply Round 30 draw cap
-        run: python scripts/apply-simulation-round-cap.py
-
-      - name: Snapshot effective sources
+      - name: Snapshot canonical sources
         run: |
           mkdir -p critical-stall-diagnostics/effective-source
           cp src/lib/simulation/game.ts critical-stall-diagnostics/effective-source/simulation-game.ts
