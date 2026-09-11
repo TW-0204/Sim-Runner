@@ -1,5 +1,9 @@
 import type { PlayerAugmentSetups } from "./effects";
-import { getAugmentRuntime, registeredPieceSetupAugmentIds } from "./runtime-registry";
+import {
+  getAugmentRuntime,
+  registeredAugmentReferencePolicies,
+  registeredPieceSetupAugmentIds,
+} from "./runtime-registry";
 import type { GameEngineState, PieceState } from "@/lib/game/types";
 
 export type PieceSetupPayload = {
@@ -81,11 +85,20 @@ function pieceSetupIsValid(
   return eligiblePieces(engine, userId, augmentId).some((piece) => piece.id === pieceId);
 }
 
+/**
+ * Repairs every mutable augment reference using the runtime registry.
+ *
+ * Piece setup is the first built-in reference kind. Augments that retain group ids,
+ * result ids, target players, map entities, or other mutable identifiers can attach a
+ * custom reference policy in the registry without adding another branch here.
+ */
 export function repairInvalidAugmentSetups(
-  engine: GameEngineState,
+  engineInput: GameEngineState,
   ownedByUser: Record<string, string[]>,
   setupsByUser: Record<string, PlayerAugmentSetups>,
 ) {
+  let engine = engineInput;
+
   for (const player of engine.players) {
     const owned = ownedByUser[player.userId] ?? [];
     for (const augmentId of registeredPieceSetupAugmentIds()) {
@@ -109,6 +122,23 @@ export function repairInvalidAugmentSetups(
       setupsByUser[player.userId][augmentId] = { pieceId: replacement.id };
     }
   }
+
+  for (const { augmentId, policy } of registeredAugmentReferencePolicies()) {
+    if (!policy.repair) continue;
+    for (const player of engine.players) {
+      if (!(ownedByUser[player.userId] ?? []).includes(augmentId)) continue;
+      const repaired = policy.repair({
+        engine,
+        ownerUserId: player.userId,
+        augmentId,
+        ownedByUser,
+        setupsByUser,
+      });
+      if (repaired) engine = repaired;
+    }
+  }
+
+  return engine;
 }
 
 export function augmentSetupProblems(
@@ -143,6 +173,20 @@ export function augmentSetupProblems(
         if (!pieceSetupIsValid(engine, player.userId, augmentId, pieceId)) {
           problems.push(`${player.userId} owns ${augmentId} without a valid setup piece.`);
         }
+      }
+    }
+
+    for (const { augmentId, policy } of registeredAugmentReferencePolicies()) {
+      if (!policy.problems) continue;
+      for (const player of engine.players) {
+        if (!(ownedByUser[player.userId] ?? []).includes(augmentId)) continue;
+        problems.push(...policy.problems({
+          engine,
+          ownerUserId: player.userId,
+          augmentId,
+          ownedByUser,
+          setupsByUser,
+        }));
       }
     }
   }
