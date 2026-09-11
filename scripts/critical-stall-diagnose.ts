@@ -8,6 +8,8 @@ const cases = [
   { augmentId: "A16", seed: "6384749", playerCount: 2 },
   { augmentId: "P14", seed: "6326572", playerCount: 3, residual: true },
   { augmentId: "P16", seed: "6871323", playerCount: 4, residual: true },
+  { augmentId: "P14", seed: "6226270", playerCount: 2, residual: true },
+  { augmentId: "P14", seed: "6226189", playerCount: 2, residual: true },
 ] as const;
 
 const [{ getBalanceRuleset }, { simulateGame }] = await Promise.all([
