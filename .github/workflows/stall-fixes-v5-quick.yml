@@ -1,4 +1,4 @@
-name: Stall Fix V7 Inspect
+name: Stall Fix V7 Known Seeds
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
           node-version: 24.x
       - name: Apply current v3 plus stall fixes
         run: bash scripts/apply-v3-stack.sh
-      - name: Recheck fixed stall seeds
+      - name: Recheck all 13 known stall seeds
         run: |
           node --import ./scripts/register-ts-hooks.mjs --input-type=module <<'NODE'
           import { getBalanceRuleset } from './src/lib/simulation/rulesets.ts';
@@ -30,14 +30,23 @@ jobs:
           const cases = [
             { seed: '1301484', playerCount: 2, label: 'A10-terminal-1' },
             { seed: '1301794', playerCount: 2, label: 'A10-terminal-2' },
-            { seed: '1402130', playerCount: 3, label: 'A10-selection-invalidated' },
             { seed: '1400473', playerCount: 3, label: 'P14-A13-wormhole-lap' },
+            { seed: '1402130', playerCount: 3, label: 'A10-selection-invalidated' },
+            { seed: '1500013', playerCount: 4, label: 'P14-A08-upheaval-lap' },
+            { seed: '1500032', playerCount: 4, label: 'A15-only-piece-locked' },
+            { seed: '1500206', playerCount: 4, label: 'A16-center-shortened-route' },
+            { seed: '1500642', playerCount: 4, label: 'A10-terminal-4p' },
+            { seed: '1501086', playerCount: 4, label: 'A10-invalidated-1' },
+            { seed: '1501172', playerCount: 4, label: 'P14-A13-wormhole-lap-4p' },
+            { seed: '1501188', playerCount: 4, label: 'A10-invalidated-2' },
+            { seed: '1501304', playerCount: 4, label: 'A10-invalidated-3' },
+            { seed: '1501995', playerCount: 4, label: 'A13-G13-backdo' },
           ];
+          let bad = 0;
           for (const item of cases) {
             const result = simulateGame({ seed: item.seed, ruleset, playerCount: item.playerCount, maxActions: 20000 });
             console.log(JSON.stringify({ ...item, status: result.status, winnerUserId: result.winnerUserId, winnerCondition: result.winnerCondition, error: result.error }));
-            if (result.status === 'STALLED') throw new Error(`${item.label} seed ${item.seed} still stalled: ${result.error}`);
+            if (result.status !== 'COMPLETED') bad += 1;
           }
+          if (bad > 0) throw new Error(`${bad}/${cases.length} known stall seeds did not complete`);
           NODE
-      - name: Inspect remaining 4p stalls
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/stall-fixes-v7-inspect.ts
