@@ -51,6 +51,41 @@ export function initializeAcquiredPieceSetup(
   setupsByUser[userId][augmentId] = { pieceId };
 }
 
+/**
+ * A10 can transfer a piece that itself came from an earlier Betrayal. The low-level
+ * transfer deliberately preserves the original-owner marker, so the lifecycle must
+ * normalize the ownership graph after the container move:
+ * - if the piece returned to its original owner it is native again;
+ * - if the removed piece was the root id of a surviving group, re-root that group to
+ *   one of the remaining pieces so no piece points at an id outside its container.
+ */
+function normalizeBetrayalTransfer(
+  engine: GameEngineState,
+  sourceUserId: string,
+  recipientUserId: string,
+  transferredPieceId: string,
+) {
+  const source = engine.players.find((player) => player.userId === sourceUserId);
+  const recipient = engine.players.find((player) => player.userId === recipientUserId);
+  const transferred = recipient?.pieces.find((piece) => piece.id === transferredPieceId);
+  if (!recipient || !transferred) {
+    throw new Error("배반 이동 후 소유권을 정규화할 말을 찾지 못했습니다.");
+  }
+
+  const survivingGroup = source?.pieces.filter((piece) => piece.groupId === transferredPieceId) ?? [];
+  if (survivingGroup.length > 0) {
+    const replacementGroupId = [...survivingGroup]
+      .sort((left, right) => left.id.localeCompare(right.id))[0]?.id;
+    if (replacementGroupId) {
+      for (const piece of survivingGroup) piece.groupId = replacementGroupId;
+    }
+  }
+
+  if (transferred.betrayalOriginalOwnerUserId === recipientUserId) {
+    delete transferred.betrayalOriginalOwnerUserId;
+  }
+}
+
 function repairTransferredSetup(
   engine: GameEngineState,
   sourceUserId: string,
@@ -117,6 +152,12 @@ export function applyBetrayalAcquisitionLifecycle(
   random: () => number = Math.random,
 ) {
   const transfer = applyBetrayalTransfer(engineInput, sourceUserId, random);
+  normalizeBetrayalTransfer(
+    transfer.engine,
+    sourceUserId,
+    transfer.recipientUserId,
+    transfer.transferredPieceId,
+  );
   repairTransferredSetup(transfer.engine, sourceUserId, transfer.transferredPieceId, setupsByUser);
   maybeDeclareSourceWinnerAfterTransfer(
     transfer.engine,
