@@ -39,15 +39,13 @@ import {
   splitNumberResult,
 } from "@/lib/game/number-cells";
 import { applyPassiveSpecialWinner } from "@/lib/game/passive-win";
-import { baseStepsForFace, castYut } from "@/lib/game/roll";
+import { baseStepsForFace } from "@/lib/game/roll";
 import {
-  applyGodHandRoll,
-  beginRollFlow,
   godHandChargeCount,
   keepDoResult,
-  rerollDoResult,
   resolveDualRollChoice,
 } from "@/lib/game/roll-flow";
+import { executeDoRerollLifecycle, executeRollLifecycle } from "@/lib/game/roll-lifecycle";
 import { applySelfRelianceSplit } from "@/lib/game/self-reliance";
 import { injectTomorrowResult, saveResultForTomorrow } from "@/lib/game/tomorrow";
 import {
@@ -55,7 +53,6 @@ import {
   injectBombBonusRolls,
   prepareBasicRollAugments,
   resolveDueAutomaticAugmentEvent,
-  resolveS16Nak,
   resolveUniverseFreezeTurn,
   resolveVacancyTurn,
 } from "@/lib/game/turn-lifecycle";
@@ -126,16 +123,6 @@ const LONE_WOLF_EXTRA_ROLL_FUTURE_BONUS = 32;
 function nextTokenId(context: SimulationContext, label: string) {
   context.tokenCounter += 1;
   return `sim:${context.seed}:${context.tokenCounter}:${label}`;
-}
-
-function withSeededMathRandom<T>(random: () => number, callback: () => T): T {
-  const original = Math.random;
-  Math.random = random;
-  try {
-    return callback();
-  } finally {
-    Math.random = original;
-  }
 }
 
 function playerSeeds(playerCount: number) {
@@ -748,43 +735,39 @@ function resolveRollChoice(context: SimulationContext, engine: GameEngineState, 
     return finalizeAction(before, next, userId, context, "choose_roll");
   }
 
-  const rerolledFace = castYut(context.rng.roll.next);
-  const next = rerollDoResult(engine, rerolledFace, nextTokenId(context, "do-reroll"), owned, actorSetups(context, userId));
-  return finalizeAction(before, next, userId, context, "reroll_do");
+  return executeDoRerollLifecycle({
+    context,
+    engine,
+    userId,
+    randomRoll: context.rng.roll.next,
+    nextTokenId: (label) => nextTokenId(context, label),
+  });
 }
 
 function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
   const owned = actorOwned(context, userId);
-  const before = structuredClone(engine);
+  const godHandFace = engine.pendingRolls[0] === "BASIC"
+    && owned.includes("P19")
+    && godHandChargeCount(engine, userId, owned) > 0
+      ? "MO" as const
+      : null;
 
-  const nak = resolveS16Nak(
+  const result = executeRollLifecycle({
+    context,
     engine,
     userId,
-    context.ownedByUser,
-    actorSetups(context, userId),
-    () => context.rng.effect.next(),
-    () => nextTokenId(context, "nak-compensation"),
-  );
-  if (nak.checked) {
+    randomRoll: context.rng.roll.next,
+    randomEffect: context.rng.effect.next,
+    nextTokenId: (label) => nextTokenId(context, label),
+    godHandFace,
+  });
+  if (result.s16Checked) {
     context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;
   }
-  if (nak.occurred) {
+  if (result.s16Occurred) {
     context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
-    return finalizeAction(before, nak.engine, userId, context, "roll");
   }
-  if (engine.pendingRolls[0] === "BASIC" && owned.includes("P19") && godHandChargeCount(engine, userId, owned) > 0) {
-    const next = applyGodHandRoll(engine, "MO", nextTokenId(context, "god-hand"), owned, actorSetups(context, userId));
-    return finalizeAction(before, next, userId, context, "god_hand");
-  }
-
-  const faces: [ReturnType<typeof castYut>, ReturnType<typeof castYut>] = [
-    castYut(context.rng.roll.next),
-    castYut(context.rng.roll.next),
-  ];
-  const next = withSeededMathRandom(context.rng.effect.next, () => (
-    beginRollFlow(engine, faces, nextTokenId(context, "roll"), owned, actorSetups(context, userId))
-  ));
-  return finalizeAction(before, next, userId, context, "roll");
+  return result.engine;
 }
 
 function resolveCaptureChoice(context: SimulationContext, engine: GameEngineState) {
