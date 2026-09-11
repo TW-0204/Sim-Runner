@@ -1,4 +1,5 @@
 import { AUGMENTS } from "./catalog";
+import { HOOKED_AUGMENT_RUNTIMES } from "./runtime";
 import type { GameEngineState } from "@/lib/game/types";
 import type { PlayerAugmentSetups } from "./effects";
 
@@ -71,8 +72,9 @@ export type AugmentRuntimeRegistration = {
 
 /**
  * Frozen compatibility allowlist for the augments that existed when the canonical
- * runtime migration started. New augments must not be added here; register them as
- * `hooked` instead. Existing entries should disappear from this list as they migrate.
+ * runtime migration started. New augments must not be added here; register them in
+ * `src/lib/augments/runtime/` as `hooked` instead. Existing entries should disappear
+ * from this list as they migrate.
  */
 const LEGACY_IDS = [
   "S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08",
@@ -85,10 +87,15 @@ const LEGACY_IDS = [
   "A10", "A11", "A12", "A13", "A14", "A15", "A16",
 ] as const;
 
-const REGISTRATIONS: AugmentRuntimeRegistration[] = LEGACY_IDS.map((id) => ({
+const LEGACY_REGISTRATIONS: AugmentRuntimeRegistration[] = LEGACY_IDS.map((id) => ({
   id,
   implementation: "legacy",
 }));
+
+const REGISTRATIONS: AugmentRuntimeRegistration[] = [
+  ...LEGACY_REGISTRATIONS,
+  ...HOOKED_AUGMENT_RUNTIMES,
+];
 
 function overrideRegistration(
   id: string,
