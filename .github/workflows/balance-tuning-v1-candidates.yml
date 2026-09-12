@@ -19,236 +19,215 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: 'gaepan-slot1-unlock-6', augment: 'AUG-017', slot: 1, threshold: 6, games: 500 }
-          - { label: 'gaepan-slot2-unlock-3', augment: 'AUG-017', slot: 2, threshold: 3, games: 500 }
-          - { label: 'gaepan-slot2-unlock-4', augment: 'AUG-017', slot: 2, threshold: 4, games: 500 }
-          - { label: 'gaepan-slot2-unlock-5', augment: 'AUG-017', slot: 2, threshold: 5, games: 500 }
+          - { label: 'godhand-next-3-smart', augment: 'AUG-044', uses: 3, games: 500 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
 
-      - name: Apply acquisition-scoped Gaepan candidate inside runner only
+      - name: Apply finite God Hand and smart face policy inside runner only
         env:
-          THRESHOLD: ${{ matrix.threshold }}
+          USES: ${{ matrix.uses }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import os
           import re
 
-          threshold = int(os.environ['THRESHOLD'])
+          uses = int(os.environ['USES'])
 
-          # Candidate rule:
-          # - only GAE rolled after AUG-017 acquisition is counted
-          # - before unlock, normal YUT/MO extra rolls remain intact
-          # - the threshold-reaching GAE unlocks but grants no extra roll
-          # - after unlock, each later GAE grants one extra roll and YUT/MO grant none
-          p = Path('src/lib/augments/effects.ts')
+          # Finite-use game-rule candidate: acquisition grants N basic-roll overrides,
+          # and there is no later recharge.
+          p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
-          pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
-          replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{
-            if (has(ownedIds, "AUG-017")) return face === "GAE";
-            return face === "YUT" || face === "MO";
-          }}
 
-          export function canGrantFaceExtraRoll(
-            engine: GameEngineState,
-            userId: string,
-            face: RollFace,
-            ownedIds: string[],
-          ) {{
-            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
-            const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;
-            if (face === "GAE") return countBeforeThisRoll + 1 > {threshold};
-            if (face === "YUT" || face === "MO") return countBeforeThisRoll < {threshold};
-            return false;
-          }}
+          old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
+            if (!has(ownedIds, "AUG-044")) return 0;
+            return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;
+          }'''
+          new_charge = f'''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {{
+            if (!has(ownedIds, "AUG-044")) return 0;
+            const runtime = runtimeFor(engine, userId);
+            if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};
+            return runtime.godHandCharges;
+          }}'''
+          if s.count(old_charge) != 1:
+            raise SystemExit('godHandChargeCount shape changed')
+          s = s.replace(old_charge, new_charge)
 
-          export function consumeFaceExtraRollGrant(
-            engine: GameEngineState,
-            userId: string,
-            face: RollFace,
-            ownedIds: string[],
-          ) {{
-            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+          s, count = re.subn(
+              r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
+              '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
+            // Finite-use God Hand does not recharge from later basic rolls.
+            if (!has(ownedIds, "AUG-044")) return;
+          }
 
-            const runtime = runtimeForPlayer(engine, userId);
-            const countBeforeThisRoll = runtime.g01GameGaeCount ?? 0;
-
-            if (face === "GAE") {{
-              const countAfterThisRoll = countBeforeThisRoll + 1;
-              runtime.g01GameGaeCount = countAfterThisRoll;
-
-              if (countAfterThisRoll === {threshold} && runtime.g01UnlockRound == null) {{
-                runtime.g01UnlockRound = engine.round;
-                runtime.g01UnlockTurnNumber = engine.turnNumber;
-              }}
-
-              const grant = countAfterThisRoll > {threshold};
-              if (grant) runtime.g01PostUnlockExtraRolls = (runtime.g01PostUnlockExtraRolls ?? 0) + 1;
-              return grant;
-            }}
-
-            if (face === "YUT" || face === "MO") return countBeforeThisRoll < {threshold};
-            return false;
-          }}
-
-          export function armA04OnAcquisition'''
-          s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          function canUseDoReroll''',
+              s,
+              count=1,
+              flags=re.S,
+          )
           if count != 1:
-            raise SystemExit('Gaepan face-extra block shape changed')
+            raise SystemExit('recordGodHandBasicRoll shape changed')
+
+          old_spend = '''  runtime.godHandCharges ??= 0;
+            runtime.godHandBasicProgress ??= 0;
+            if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");
+            runtime.godHandCharges -= 1;
+            runtime.godHandBasicProgress = 0;
+            runtime.godHandSkipNextBasicProgress = true;'''
+          new_spend = f'''  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};
+            if (runtime.godHandCharges < 1) throw new Error("신의 손 사용 횟수가 없습니다.");
+            runtime.godHandCharges -= 1;'''
+          if s.count(old_spend) != 1:
+            raise SystemExit('God Hand spend block shape changed')
+          s = s.replace(old_spend, new_spend)
           p.write_text(s)
 
-          # Candidate-only runtime telemetry.
-          p = Path('src/lib/game/types.ts')
-          s = p.read_text()
-          marker = '  g01ExtraRollsGranted?: number;\n'
-          if marker not in s:
-            raise SystemExit('Gaepan runtime type marker missing')
-          fields = '''  g01GameGaeCount?: number;
-            g01UnlockRound?: number;
-            g01UnlockTurnNumber?: number;
-            g01PostUnlockExtraRolls?: number;
-          '''
-          s = s.replace(marker, marker + fields, 1)
-          p.write_text(s)
-
-          # Remove the legacy maximum-2 stacking restriction for this candidate.
-          p = Path('src/lib/game/engine.ts')
-          s = p.read_text()
-          stack_guards = s.count('if (ownedIds.includes("AUG-017")) {')
-          if stack_guards != 3:
-            raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {stack_guards}')
-          s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
-          p.write_text(s)
-
-          # Expose the direct candidate telemetry from every completed simulation.
-          p = Path('src/lib/simulation/types.ts')
-          s = p.read_text()
-          marker = '  performanceByUser?: Record<string, PlayerPerformanceTelemetry>;\n'
-          if marker not in s:
-            raise SystemExit('Simulation result marker missing')
-          telemetry_type = '''  gaepanCandidateTelemetryByUser?: Record<string, {
-            gaeCount: number;
-            unlockRound: number | null;
-            unlockTurnNumber: number | null;
-            postUnlockExtraRolls: number;
-          }>;
-          '''
-          s = s.replace(marker, marker + telemetry_type, 1)
-          p.write_text(s)
-
+          # Bot-only policy candidate: evaluate all five selectable faces against the
+          # current board. Exact captures/finishes can beat MO; YUT/MO retain the value
+          # of their queued extra roll. No game rule is changed by this policy block.
           p = Path('src/lib/simulation/game.ts')
           s = p.read_text()
-          marker = '    performanceByUser: structuredClone(context.performanceByUser),\n'
-          if marker not in s:
-            raise SystemExit('Simulation return marker missing')
-          telemetry_return = '''    gaepanCandidateTelemetryByUser: Object.fromEntries(context.engine.players.map((candidate) => {
-              const runtime = context.engine.augmentRuntime?.[candidate.userId];
-              return [candidate.userId, {
-                gaeCount: runtime?.g01GameGaeCount ?? 0,
-                unlockRound: runtime?.g01UnlockRound ?? null,
-                unlockTurnNumber: runtime?.g01UnlockTurnNumber ?? null,
-                postUnlockExtraRolls: runtime?.g01PostUnlockExtraRolls ?? 0,
-              }];
-            })),
-          '''
-          s = s.replace(marker, marker + telemetry_return, 1)
-          p.write_text(s)
 
-          # Make the paired diagnostic slot-selectable and report unlock telemetry.
-          p = Path('scripts/augment-diagnostic-run.ts')
-          s = p.read_text()
-          old = '''const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 60);
-          const outputDir = argument("output-dir") ?? "augment-diagnostic-results";'''
-          new = '''const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 60);
-          const requestedAcquisitionIndex = argument("acquisition-index") == null
-            ? null
-            : positiveInteger("acquisition-index", argument("acquisition-index"), 1);
-          const outputDir = argument("output-dir") ?? "augment-diagnostic-results";'''
-          if old not in s:
-            raise SystemExit('diagnostic arg marker changed')
-          s = s.replace(old, new, 1)
+          old_import = '''import {
+            godHandChargeCount,
+            keepDoResult,
+            resolveDualRollChoice,
+          } from "@/lib/game/roll-flow";'''
+          new_import = '''import {
+            applyGodHandRoll,
+            godHandChargeCount,
+            keepDoResult,
+            resolveDualRollChoice,
+          } from "@/lib/game/roll-flow";'''
+          if s.count(old_import) != 1:
+            raise SystemExit('roll-flow import shape changed')
+          s = s.replace(old_import, new_import)
 
-          old = '''const acquisitionIndexes = target.timing === "last" ? [2]
-            : target.timing === "first" || target.timing === "not-last" ? [1]
-            : [1, 2];'''
-          new = '''const defaultAcquisitionIndexes = target.timing === "last" ? [2]
-            : target.timing === "first" || target.timing === "not-last" ? [1]
-            : [1, 2];
-          const acquisitionIndexes = requestedAcquisitionIndex == null
-            ? defaultAcquisitionIndexes
-            : [requestedAcquisitionIndex];'''
-          if old not in s:
-            raise SystemExit('diagnostic acquisition index marker changed')
-          s = s.replace(old, new, 1)
+          old_type_import = 'import type { GameEngineState, PieceState, RollToken } from "@/lib/game/types";'
+          new_type_import = 'import type { GameEngineState, PieceState, RollFace, RollToken } from "@/lib/game/types";'
+          if s.count(old_type_import) != 1:
+            raise SystemExit('game type import shape changed')
+          s = s.replace(old_type_import, new_type_import)
 
-          old = '    let triggerSum = 0;\n'
-          new = '''    let triggerSum = 0;
-              let unlockedGames = 0;
-              let unlockRoundSum = 0;
-              let unlockTurnNumberSum = 0;
-              let postUnlockExtraRollSum = 0;
-          '''
-          if old not in s:
-            raise SystemExit('diagnostic counter marker changed')
-          s = s.replace(old, new, 1)
+          old_execute = '''function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
+            const owned = actorOwned(context, userId);
+            const godHandFace = engine.pendingRolls[0] === "BASIC"
+              && owned.includes("AUG-044")
+              && godHandChargeCount(engine, userId, owned) > 0
+                ? "MO" as const
+                : null;
 
-          old = '''      if (treatmentWon) triggerBuckets[bucket].wins += 1;
+            const result = executeRollLifecycle({'''
+          new_execute = '''const GOD_HAND_SMART_FACES: RollFace[] = ["MO", "YUT", "GEOL", "GAE", "DO"];
 
-                addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);'''
-          new = '''      if (treatmentWon) triggerBuckets[bucket].wins += 1;
+          function godHandPreviewScore(
+            context: SimulationContext,
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+          ) {
+            const owned = actorOwned(context, userId);
+            const setups = actorSetups(context, userId);
+            try {
+              const preview = applyGodHandRoll(
+                engine,
+                face,
+                `god-hand-preview:${face}`,
+                owned,
+                setups,
+              );
 
-                const gaepanTelemetry = (treatment as any).gaepanCandidateTelemetryByUser?.[forcedUserId];
-                if (gaepanTelemetry?.unlockRound != null) {
-                  unlockedGames += 1;
-                  unlockRoundSum += gaepanTelemetry.unlockRound;
-                  unlockTurnNumberSum += gaepanTelemetry.unlockTurnNumber ?? 0;
+              // YUT/MO queue an additional roll. Preserve the simulator's existing
+              // future-roll valuation while separately projecting the chosen face's move.
+              const queuedRollValue = preview.pendingRolls.length * 12;
+              const movementPreview = structuredClone(preview);
+              if (movementPreview.stage === "AWAITING_ROLL" && movementPreview.results.length > 0) {
+                movementPreview.pendingRolls = [];
+                movementPreview.stage = "MOVING";
+              }
+
+              let bestScore = playerPositionScore(movementPreview, userId, owned, setups);
+              if (movementPreview.stage === "MOVING") {
+                const moveOwned = moveOwnedIdsForAthlete(owned);
+                const legalOptions = legalMoveOptionsWithAugments(
+                  movementPreview,
+                  userId,
+                  owned,
+                  setups,
+                  context.ownedByUser,
+                  moveOwned,
+                );
+                for (const option of legalOptions) {
+                  try {
+                    const next = executeMoveAction(
+                      context,
+                      movementPreview,
+                      userId,
+                      moveArgsForTarget(
+                        option.groupId,
+                        option.result,
+                        option.target,
+                        owned.includes("AUG-031"),
+                      ),
+                    );
+                    bestScore = Math.max(
+                      bestScore,
+                      outcomeScore(context, movementPreview, next, userId),
+                    );
+                  } catch {
+                    // Ignore invalid preview moves exactly as the normal bot scorer does.
+                  }
                 }
-                postUnlockExtraRollSum += gaepanTelemetry?.postUnlockExtraRolls ?? 0;
+              }
+              return bestScore + queuedRollValue;
+            } catch {
+              return Number.NEGATIVE_INFINITY;
+            }
+          }
 
-                addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);'''
-          if old not in s:
-            raise SystemExit('diagnostic telemetry marker changed')
-          s = s.replace(old, new, 1)
+          function chooseSmartGodHandFace(
+            context: SimulationContext,
+            engine: GameEngineState,
+            userId: string,
+          ): RollFace {
+            let bestFace: RollFace = "MO";
+            let bestScore = Number.NEGATIVE_INFINITY;
+            for (const face of GOD_HAND_SMART_FACES) {
+              const score = godHandPreviewScore(context, engine, userId, face);
+              if (score > bestScore) {
+                bestScore = score;
+                bestFace = face;
+              }
+            }
+            return bestFace;
+          }
 
-          old = '      averageTriggers: triggerSum / validPairs,\n'
-          new = '''      averageTriggers: triggerSum / validPairs,
-                unlockRate: unlockedGames / validPairs,
-                averageUnlockRound: unlockedGames ? unlockRoundSum / unlockedGames : null,
-                averageUnlockTurnNumber: unlockedGames ? unlockTurnNumberSum / unlockedGames : null,
-                averagePostUnlockExtraRollsPerGame: postUnlockExtraRollSum / validPairs,
-                averagePostUnlockExtraRollsWhenUnlocked: unlockedGames ? postUnlockExtraRollSum / unlockedGames : null,
-          '''
-          if old not in s:
-            raise SystemExit('diagnostic report marker changed')
-          s = s.replace(old, new, 1)
+          function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
+            const owned = actorOwned(context, userId);
+            const godHandFace = engine.pendingRolls[0] === "BASIC"
+              && owned.includes("AUG-044")
+              && godHandChargeCount(engine, userId, owned) > 0
+                ? chooseSmartGodHandFace(context, engine, userId)
+                : null;
 
-          old = '  "| Slot | Players | Treatment win | Control same-seat win | Paired delta | >15R T/C | >20R T/C | Avg triggers | Capture Δ | Lost-piece Δ | Finish Δ |",\n  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",'
-          new = '  "| Slot | Players | Treatment win | Control same-seat win | Paired delta | Unlock rate | Avg unlock R | Extra rolls/game | Extra rolls/unlocked | >15R T/C | >20R T/C |",\n  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",'
-          if old not in s:
-            raise SystemExit('diagnostic markdown header marker changed')
-          s = s.replace(old, new, 1)
-
-          old = '''    return `| ${r.acquisitionIndex} | ${r.playerCount} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.pairedWinDeltaPp >= 0 ? "+" : ""}${r.pairedWinDeltaPp.toFixed(2)}%p | ${pct(r.treatmentOver15Rate)} / ${pct(r.controlOver15Rate)} | ${pct(r.treatmentOver20Rate)} / ${pct(r.controlOver20Rate)} | ${r.averageTriggers.toFixed(2)} | ${r.performanceDelta.enemyPiecesCaptured.toFixed(2)} | ${r.performanceDelta.ownPiecesSentToWaiting.toFixed(2)} | ${r.performanceDelta.piecesFinished.toFixed(2)} |`;'''
-          new = '''    return `| ${r.acquisitionIndex} | ${r.playerCount} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.pairedWinDeltaPp >= 0 ? "+" : ""}${r.pairedWinDeltaPp.toFixed(2)}%p | ${pct(r.unlockRate)} | ${r.averageUnlockRound == null ? "—" : r.averageUnlockRound.toFixed(2)} | ${r.averagePostUnlockExtraRollsPerGame.toFixed(2)} | ${r.averagePostUnlockExtraRollsWhenUnlocked == null ? "—" : r.averagePostUnlockExtraRollsWhenUnlocked.toFixed(2)} | ${pct(r.treatmentOver15Rate)} / ${pct(r.controlOver15Rate)} | ${pct(r.treatmentOver20Rate)} / ${pct(r.controlOver20Rate)} |`;'''
-          if old not in s:
-            raise SystemExit('diagnostic markdown row marker changed')
-          s = s.replace(old, new, 1)
+            const result = executeRollLifecycle({'''
+          if s.count(old_execute) != 1:
+            raise SystemExit('executeRoll God Hand policy shape changed')
+          s = s.replace(old_execute, new_execute)
           p.write_text(s)
           PY
 
           git diff --check
-          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/types.ts src/lib/simulation/game.ts src/lib/simulation/types.ts scripts/augment-diagnostic-run.ts
+          git diff -- src/lib/game/roll-flow.ts src/lib/simulation/game.ts
 
       - name: Run paired candidate diagnostic
         run: |
           OUT="tuning-results/${{ matrix.label }}"
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
             --augment "${{ matrix.augment }}" \
-            --acquisition-index "${{ matrix.slot }}" \
             --games "${{ matrix.games }}" \
             --max-rounds 60 \
             --output-dir "$OUT"
