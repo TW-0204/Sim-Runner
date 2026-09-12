@@ -14,26 +14,21 @@ permissions:
 jobs:
   candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { label: 'baseline-gaepan', augment: 'AUG-017', patch: 'baseline' }
-          - { label: 'gaepan-unlock-6', augment: 'AUG-017', patch: 'gaepan-unlock-6' }
-          - { label: 'gaepan-unlock-7', augment: 'AUG-017', patch: 'gaepan-unlock-7' }
-          - { label: 'gaepan-unlock-8', augment: 'AUG-017', patch: 'gaepan-unlock-8' }
-          - { label: 'baseline-godhand', augment: 'AUG-044', patch: 'baseline' }
-          - { label: 'godhand-next-1', augment: 'AUG-044', patch: 'godhand-next-1' }
-          - { label: 'godhand-next-2', augment: 'AUG-044', patch: 'godhand-next-2' }
-          - { label: 'godhand-next-3', augment: 'AUG-044', patch: 'godhand-next-3' }
+          - { label: 'gaepan-unlock-5', augment: 'AUG-017', patch: 'gaepan-unlock-5', games: 200 }
+          - { label: 'gaepan-scaled-5-7-7', augment: 'AUG-017', patch: 'gaepan-scaled-5-7-7', games: 300 }
+          - { label: 'gaepan-scaled-5-7-8', augment: 'AUG-017', patch: 'gaepan-scaled-5-7-8', games: 300 }
+          - { label: 'godhand-next-3-confirm', augment: 'AUG-044', patch: 'godhand-next-3', games: 500 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
       - name: Apply candidate patch inside runner only
-        if: matrix.patch != 'baseline'
         env:
           PATCH: ${{ matrix.patch }}
         run: |
@@ -43,14 +38,6 @@ jobs:
           import re
 
           patch = os.environ['PATCH']
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              s = p.read_text()
-              count = s.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one match for {patch}, found {count}')
-              p.write_text(s.replace(old, new))
 
           if patch.startswith('godhand-next-'):
               uses = int(patch.removeprefix('godhand-next-'))
@@ -80,22 +67,30 @@ jobs:
               s = s.replace(old_spend, new_spend)
               p.write_text(s)
 
-          elif patch.startswith('gaepan-unlock-'):
-              threshold = int(patch.removeprefix('gaepan-unlock-'))
+          elif patch.startswith('gaepan-unlock-') or patch.startswith('gaepan-scaled-'):
+              if patch.startswith('gaepan-unlock-'):
+                  value = int(patch.removeprefix('gaepan-unlock-'))
+                  threshold_expr = str(value)
+              else:
+                  values = tuple(int(v) for v in patch.removeprefix('gaepan-scaled-').split('-'))
+                  if len(values) != 3:
+                      raise SystemExit('Gaepan scaled candidate requires 2P/3P/4P thresholds')
+                  threshold_expr = f'(engine.players.length === 2 ? {values[0]} : engine.players.length === 3 ? {values[1]} : {values[2]})'
+
               p = Path('src/lib/augments/effects.ts')
               s = p.read_text()
               pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
-              replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{\n  if (has(ownedIds, "AUG-017")) return face === "GAE";\n  return face === "YUT" || face === "MO";\n}}\n\nexport function canGrantFaceExtraRoll(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";\n  if (face !== "GAE") return false;\n  const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;\n  return countBeforeThisRoll + 1 > {threshold};\n}}\n\nexport function consumeFaceExtraRollGrant(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  const grant = canGrantFaceExtraRoll(engine, userId, face, ownedIds);\n  const runtime = runtimeForPlayer(engine, userId);\n  if (face === "GAE") runtime.g01GameGaeCount = (runtime.g01GameGaeCount ?? 0) + 1;\n  return grant;\n}}\n\nexport function armA04OnAcquisition'''
+              replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{\n  if (has(ownedIds, "AUG-017")) return face === "GAE";\n  return face === "YUT" || face === "MO";\n}}\n\nexport function canGrantFaceExtraRoll(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";\n  if (face !== "GAE") return false;\n  const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;\n  const unlockAt = {threshold_expr};\n  return countBeforeThisRoll + 1 > unlockAt;\n}}\n\nexport function consumeFaceExtraRollGrant(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  const grant = canGrantFaceExtraRoll(engine, userId, face, ownedIds);\n  const runtime = runtimeForPlayer(engine, userId);\n  if (face === "GAE") runtime.g01GameGaeCount = (runtime.g01GameGaeCount ?? 0) + 1;\n  return grant;\n}}\n\nexport function armA04OnAcquisition'''
               s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
               if count != 1:
-                  raise SystemExit('G01 face-extra block shape changed')
+                  raise SystemExit('Gaepan face-extra block shape changed')
               p.write_text(s)
 
               p = Path('src/lib/game/types.ts')
               s = p.read_text()
               marker = '  g01ExtraRollsGranted?: number;\n'
               if marker not in s:
-                  raise SystemExit('G01 runtime type marker missing')
+                  raise SystemExit('Gaepan runtime type marker missing')
               s = s.replace(marker, marker + '  g01GameGaeCount?: number;\n', 1)
               p.write_text(s)
 
@@ -103,7 +98,7 @@ jobs:
               s = p.read_text()
               count = s.count('if (ownedIds.includes("AUG-017")) {')
               if count != 3:
-                  raise SystemExit(f'expected 3 G01 stack-limit guards, found {count}')
+                  raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {count}')
               s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
               p.write_text(s)
           else:
@@ -116,70 +111,12 @@ jobs:
           OUT="tuning-results/${{ matrix.label }}"
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
             --augment "${{ matrix.augment }}" \
-            --games 200 \
+            --games "${{ matrix.games }}" \
             --max-rounds 60 \
             --output-dir "$OUT"
       - uses: actions/upload-artifact@v4
         with:
           name: tuning-${{ matrix.label }}
           path: tuning-results/
-          if-no-files-found: error
-          retention-days: 14
-
-  compare:
-    needs: candidate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: tuning-*
-          path: tuning-results
-          merge-multiple: true
-      - name: Build comparison table
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          const groups = {
-            'AUG-017': ['baseline-gaepan','gaepan-unlock-6','gaepan-unlock-7','gaepan-unlock-8'],
-            'AUG-044': ['baseline-godhand','godhand-next-1','godhand-next-2','godhand-next-3'],
-          };
-          const rows = [];
-          for (const [augment, labels] of Object.entries(groups)) {
-            for (const label of labels) {
-              const file = path.join('tuning-results', label, `diagnostic-${augment}.json`);
-              const report = JSON.parse(fs.readFileSync(file, 'utf8'));
-              for (const r of report.reports) {
-                rows.push({
-                  augment,
-                  name: report.name,
-                  label,
-                  slot: r.acquisitionIndex,
-                  players: r.playerCount,
-                  pairedDeltaPp: r.pairedWinDeltaPp,
-                  treatmentWinRate: r.treatmentWinRate,
-                  controlWinRate: r.controlWinRate,
-                  treatmentAverageRound: r.treatmentAverageRound,
-                  controlAverageRound: r.controlAverageRound,
-                  triggerRate: r.triggerRate,
-                  averageTriggers: r.averageTriggers,
-                  performanceDelta: r.performanceDelta,
-                });
-              }
-            }
-          }
-          fs.writeFileSync('tuning-comparison.json', JSON.stringify(rows, null, 2));
-          console.log('| Augment | Candidate | Slot | P | Paired Δ | Treatment win | Control win | Avg round T/C |');
-          console.log('|---|---|---:|---:|---:|---:|---:|---:|');
-          for (const r of rows) {
-            const pp = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%p`;
-            const pct = n => `${(n*100).toFixed(1)}%`;
-            console.log(`| ${r.augment} ${r.name} | ${r.label} | ${r.slot} | ${r.players} | ${pp(r.pairedDeltaPp)} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.treatmentAverageRound.toFixed(2)}/${r.controlAverageRound.toFixed(2)} |`);
-          }
-          NODE
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tuning-v1-comparison
-          path: tuning-comparison.json
           if-no-files-found: error
           retention-days: 14
