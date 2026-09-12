@@ -19,12 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: 'gaepan-slot1-unlock-8', augment: 'AUG-017', slot: 1, threshold: 8, games: 300 }
-          - { label: 'gaepan-slot1-unlock-10', augment: 'AUG-017', slot: 1, threshold: 10, games: 300 }
-          - { label: 'gaepan-slot1-unlock-12', augment: 'AUG-017', slot: 1, threshold: 12, games: 300 }
-          - { label: 'gaepan-slot2-unlock-8', augment: 'AUG-017', slot: 2, threshold: 8, games: 300 }
-          - { label: 'gaepan-slot2-unlock-10', augment: 'AUG-017', slot: 2, threshold: 10, games: 300 }
-          - { label: 'gaepan-slot2-unlock-12', augment: 'AUG-017', slot: 2, threshold: 12, games: 300 }
+          - { label: 'gaepan-slot1-unlock-14', augment: 'AUG-017', slot: 1, threshold: 14, games: 300 }
+          - { label: 'gaepan-slot1-unlock-16', augment: 'AUG-017', slot: 1, threshold: 16, games: 300 }
+          - { label: 'gaepan-slot1-unlock-18', augment: 'AUG-017', slot: 1, threshold: 18, games: 300 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -160,7 +157,7 @@ jobs:
           s = s.replace(marker, marker + telemetry_return, 1)
           p.write_text(s)
 
-          # Make paired diagnostic slot-selectable and report unlock telemetry.
+          # Make the paired diagnostic slot-selectable and report unlock telemetry.
           p = Path('scripts/augment-diagnostic-run.ts')
           s = p.read_text()
           old = '''const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 60);
