@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Candidates
+name: Balance Tuning V1 Full Recheck
 
 on:
   push:
@@ -12,59 +12,125 @@ permissions:
   contents: read
 
 jobs:
-  candidate:
+  scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { label: 'godhand-next-3-tactical', augment: 'AUG-044', uses: 3, games: 500 }
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
 
-      - name: Apply finite God Hand tactical policy with face telemetry inside runner only
-        env:
-          USES: ${{ matrix.uses }}
+      - name: Apply settled candidate baseline inside runner only
         run: |
           python - <<'PY'
           from pathlib import Path
-          import os
           import re
 
-          uses = int(os.environ['USES'])
+          # AUG-017 Gaepan candidate baseline for natural mixed games:
+          # - count only GAE after acquisition
+          # - first augment slot threshold 14, second slot threshold 10
+          # - threshold-reaching GAE only unlocks
+          # - after unlock GAE grants extra rolls, YUT/MO stop doing so
+          # - remove legacy max-two stacking restriction
+          p = Path('src/lib/augments/effects.ts')
+          s = p.read_text()
+          pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
+          replacement = '''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {
+            if (has(ownedIds, "AUG-017")) return face === "GAE";
+            return face === "YUT" || face === "MO";
+          }
 
-          # Finite-use candidate: acquisition grants N basic-roll overrides, no recharge.
+          function gaepanCandidateThreshold(ownedIds: string[]) {
+            return ownedIds[0] === "AUG-017" ? 14 : 10;
+          }
+
+          export function canGrantFaceExtraRoll(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            const threshold = gaepanCandidateThreshold(ownedIds);
+            const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;
+            if (face === "GAE") return countBeforeThisRoll + 1 > threshold;
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < threshold;
+            return false;
+          }
+
+          export function consumeFaceExtraRollGrant(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            const threshold = gaepanCandidateThreshold(ownedIds);
+            const runtime = runtimeForPlayer(engine, userId);
+            const countBeforeThisRoll = runtime.g01GameGaeCount ?? 0;
+            if (face === "GAE") {
+              const countAfterThisRoll = countBeforeThisRoll + 1;
+              runtime.g01GameGaeCount = countAfterThisRoll;
+              return countAfterThisRoll > threshold;
+            }
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < threshold;
+            return false;
+          }
+
+          export function armA04OnAcquisition'''
+          s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if count != 1:
+            raise SystemExit('Gaepan face-extra block shape changed')
+          p.write_text(s)
+
+          p = Path('src/lib/game/types.ts')
+          s = p.read_text()
+          marker = '  g01ExtraRollsGranted?: number;\n'
+          if marker not in s:
+            raise SystemExit('Gaepan runtime marker missing')
+          s = s.replace(marker, marker + '  g01GameGaeCount?: number;\n', 1)
+          p.write_text(s)
+
+          p = Path('src/lib/game/engine.ts')
+          s = p.read_text()
+          guards = s.count('if (ownedIds.includes("AUG-017")) {')
+          if guards != 3:
+            raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {guards}')
+          s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
+          p.write_text(s)
+
+          # AUG-044 God Hand candidate baseline:
+          # - exactly three upcoming BASIC roll overrides after acquisition
+          # - no recharge afterwards
+          # The normal simulator's always-MO policy is intentionally retained because
+          # it was the strongest measured policy and is therefore conservative.
           p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
           old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
             if (!has(ownedIds, "AUG-044")) return 0;
             return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;
           }'''
-          new_charge = f'''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {{
+          new_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
             if (!has(ownedIds, "AUG-044")) return 0;
             const runtime = runtimeFor(engine, userId);
-            if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};
+            if (runtime.godHandCharges == null) runtime.godHandCharges = 3;
             return runtime.godHandCharges;
-          }}'''
+          }'''
           if s.count(old_charge) != 1:
             raise SystemExit('godHandChargeCount shape changed')
           s = s.replace(old_charge, new_charge)
 
           s, count = re.subn(
-              r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
-              '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
-            // Finite-use God Hand does not recharge from later basic rolls.
+            r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
+            '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
             if (!has(ownedIds, "AUG-044")) return;
           }
 
           function canUseDoReroll''',
-              s,
-              count=1,
-              flags=re.S,
+            s,
+            count=1,
+            flags=re.S,
           )
           if count != 1:
             raise SystemExit('recordGodHandBasicRoll shape changed')
@@ -75,252 +141,31 @@ jobs:
             runtime.godHandCharges -= 1;
             runtime.godHandBasicProgress = 0;
             runtime.godHandSkipNextBasicProgress = true;'''
-          new_spend = f'''  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};
+          new_spend = '''  if (runtime.godHandCharges == null) runtime.godHandCharges = 3;
             if (runtime.godHandCharges < 1) throw new Error("신의 손 사용 횟수가 없습니다.");
             runtime.godHandCharges -= 1;'''
           if s.count(old_spend) != 1:
             raise SystemExit('God Hand spend block shape changed')
           s = s.replace(old_spend, new_spend)
           p.write_text(s)
-
-          # Expose selected-face telemetry on simulation results.
-          p = Path('src/lib/simulation/types.ts')
-          s = p.read_text()
-          marker = '  performanceByUser?: Record<string, PlayerPerformanceTelemetry>;\n'
-          if marker not in s:
-            raise SystemExit('simulation result marker missing')
-          s = s.replace(marker, marker + '  godHandSmartFaceCountsByUser?: Record<string, Record<string, number>>;\n', 1)
-          p.write_text(s)
-
-          # Bot-only tactical policy: MO is the default. Deviate only when another face
-          # immediately finishes more own pieces or captures more enemy pieces than MO.
-          p = Path('src/lib/simulation/game.ts')
-          s = p.read_text()
-          old_import = '''import {
-            godHandChargeCount,
-            keepDoResult,
-            resolveDualRollChoice,
-          } from "@/lib/game/roll-flow";'''
-          new_import = '''import {
-            applyGodHandRoll,
-            godHandChargeCount,
-            keepDoResult,
-            resolveDualRollChoice,
-          } from "@/lib/game/roll-flow";'''
-          if s.count(old_import) != 1:
-            raise SystemExit('roll-flow import shape changed')
-          s = s.replace(old_import, new_import)
-
-          old_type_import = 'import type { GameEngineState, PieceState, RollToken } from "@/lib/game/types";'
-          new_type_import = 'import type { GameEngineState, PieceState, RollFace, RollToken } from "@/lib/game/types";'
-          if s.count(old_type_import) != 1:
-            raise SystemExit('game type import shape changed')
-          s = s.replace(old_type_import, new_type_import)
-
-          context_marker = '  performanceByUser: Record<string, { rolls: number; moves: number; enemyPiecesCaptured: number; ownPiecesSentToWaiting: number; piecesFinished: number }>;\n'
-          if context_marker not in s:
-            raise SystemExit('simulation context marker missing')
-          s = s.replace(context_marker, context_marker + '  godHandSmartFaceCountsByUser: Record<string, Record<string, number>>;\n', 1)
-
-          old_execute = '''function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
-            const owned = actorOwned(context, userId);
-            const godHandFace = engine.pendingRolls[0] === "BASIC"
-              && owned.includes("AUG-044")
-              && godHandChargeCount(engine, userId, owned) > 0
-                ? "MO" as const
-                : null;
-
-            const result = executeRollLifecycle({'''
-          new_execute = '''const GOD_HAND_TACTICAL_FACES: RollFace[] = ["MO", "YUT", "GEOL", "GAE", "DO"];
-
-          type GodHandTacticalPreview = {
-            face: RollFace;
-            finishedGain: number;
-            captures: number;
-            positionScore: number;
-          };
-
-          function finishedPieceCount(engine: GameEngineState, userId: string) {
-            return engine.players.find((candidate) => candidate.userId === userId)?.pieces
-              .filter((piece) => piece.status === "FINISHED").length ?? 0;
-          }
-
-          function godHandTacticalPreview(
-            context: SimulationContext,
-            engine: GameEngineState,
-            userId: string,
-            face: RollFace,
-          ): GodHandTacticalPreview {
-            const owned = actorOwned(context, userId);
-            const setups = actorSetups(context, userId);
-            const fallback: GodHandTacticalPreview = {
-              face,
-              finishedGain: 0,
-              captures: 0,
-              positionScore: Number.NEGATIVE_INFINITY,
-            };
-            try {
-              const preview = applyGodHandRoll(
-                engine,
-                face,
-                `god-hand-preview:${face}`,
-                owned,
-                setups,
-              );
-              const movementPreview = structuredClone(preview);
-              if (movementPreview.stage === "AWAITING_ROLL" && movementPreview.results.length > 0) {
-                movementPreview.pendingRolls = [];
-                movementPreview.stage = "MOVING";
-              }
-              if (movementPreview.stage !== "MOVING") return fallback;
-
-              const beforeFinished = finishedPieceCount(movementPreview, userId);
-              const moveOwned = moveOwnedIdsForAthlete(owned);
-              const legalOptions = legalMoveOptionsWithAugments(
-                movementPreview,
-                userId,
-                owned,
-                setups,
-                context.ownedByUser,
-                moveOwned,
-              );
-              let best = fallback;
-              for (const option of legalOptions) {
-                try {
-                  const next = executeMoveAction(
-                    context,
-                    movementPreview,
-                    userId,
-                    moveArgsForTarget(
-                      option.groupId,
-                      option.result,
-                      option.target,
-                      owned.includes("AUG-031"),
-                    ),
-                  );
-                  const candidate: GodHandTacticalPreview = {
-                    face,
-                    finishedGain: Math.max(0, finishedPieceCount(next, userId) - beforeFinished),
-                    captures: capturedEnemyPieceCount(movementPreview, next, userId),
-                    positionScore: playerPositionScore(next, userId, owned, setups),
-                  };
-                  if (
-                    candidate.finishedGain > best.finishedGain
-                    || (candidate.finishedGain === best.finishedGain && candidate.captures > best.captures)
-                    || (
-                      candidate.finishedGain === best.finishedGain
-                      && candidate.captures === best.captures
-                      && candidate.positionScore > best.positionScore
-                    )
-                  ) best = candidate;
-                } catch {
-                  // Ignore invalid preview moves exactly as the normal bot scorer does.
-                }
-              }
-              return best;
-            } catch {
-              return fallback;
-            }
-          }
-
-          function chooseTacticalGodHandFace(
-            context: SimulationContext,
-            engine: GameEngineState,
-            userId: string,
-          ): RollFace {
-            const previews = GOD_HAND_TACTICAL_FACES.map((face) => godHandTacticalPreview(context, engine, userId, face));
-            const mo = previews.find((item) => item.face === "MO")!;
-
-            const betterFinish = previews
-              .filter((item) => item.finishedGain > mo.finishedGain)
-              .sort((left, right) =>
-                right.finishedGain - left.finishedGain
-                || right.captures - left.captures
-                || right.positionScore - left.positionScore
-              )[0];
-            if (betterFinish) return betterFinish.face;
-
-            const betterCapture = previews
-              .filter((item) => item.finishedGain === mo.finishedGain && item.captures > mo.captures)
-              .sort((left, right) =>
-                right.captures - left.captures
-                || right.positionScore - left.positionScore
-              )[0];
-            return betterCapture?.face ?? "MO";
-          }
-
-          function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
-            const owned = actorOwned(context, userId);
-            let godHandFace: RollFace | null = null;
-            if (
-              engine.pendingRolls[0] === "BASIC"
-              && owned.includes("AUG-044")
-              && godHandChargeCount(engine, userId, owned) > 0
-            ) {
-              godHandFace = chooseTacticalGodHandFace(context, engine, userId);
-              const counts = context.godHandSmartFaceCountsByUser[userId] ?? (context.godHandSmartFaceCountsByUser[userId] = {});
-              counts[godHandFace] = (counts[godHandFace] ?? 0) + 1;
-            }
-
-            const result = executeRollLifecycle({'''
-          if s.count(old_execute) != 1:
-            raise SystemExit('executeRoll God Hand policy shape changed')
-          s = s.replace(old_execute, new_execute)
-
-          init_marker = '    performanceByUser: Object.fromEntries(engine.players.map((player) => [player.userId, { rolls: 0, moves: 0, enemyPiecesCaptured: 0, ownPiecesSentToWaiting: 0, piecesFinished: 0 }])),\n'
-          if init_marker not in s:
-            raise SystemExit('simulation context init marker missing')
-          s = s.replace(init_marker, init_marker + '    godHandSmartFaceCountsByUser: Object.fromEntries(engine.players.map((player) => [player.userId, {}])),\n', 1)
-
-          return_marker = '    performanceByUser: structuredClone(context.performanceByUser),\n'
-          if return_marker not in s:
-            raise SystemExit('simulation return marker missing')
-          s = s.replace(return_marker, return_marker + '    godHandSmartFaceCountsByUser: structuredClone(context.godHandSmartFaceCountsByUser),\n', 1)
-          p.write_text(s)
-
-          # Aggregate selected faces in the paired diagnostic JSON.
-          p = Path('scripts/augment-diagnostic-run.ts')
-          s = p.read_text()
-          counter_marker = '    let triggerSum = 0;\n'
-          if counter_marker not in s:
-            raise SystemExit('diagnostic counter marker missing')
-          s = s.replace(counter_marker, counter_marker + '    const godHandFaceCounts: Record<string, number> = { DO: 0, GAE: 0, GEOL: 0, YUT: 0, MO: 0 };\n', 1)
-
-          perf_marker = '''      addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);
-                addPerf(controlPerf, control.performanceByUser?.[forcedUserId]);'''
-          telemetry = '''      const selectedFaces = (treatment as any).godHandSmartFaceCountsByUser?.[forcedUserId] ?? {};
-                for (const face of ["DO", "GAE", "GEOL", "YUT", "MO"]) {
-                  godHandFaceCounts[face] += selectedFaces[face] ?? 0;
-                }
-
-                addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);
-                addPerf(controlPerf, control.performanceByUser?.[forcedUserId]);'''
-          if perf_marker not in s:
-            raise SystemExit('diagnostic perf marker missing')
-          s = s.replace(perf_marker, telemetry, 1)
-
-          report_marker = '      averageTriggers: triggerSum / validPairs,\n'
-          if report_marker not in s:
-            raise SystemExit('diagnostic report marker missing')
-          s = s.replace(report_marker, report_marker + '      godHandFaceCounts,\n', 1)
-          p.write_text(s)
           PY
 
           git diff --check
-          git diff -- src/lib/game/roll-flow.ts src/lib/simulation/game.ts src/lib/simulation/types.ts scripts/augment-diagnostic-run.ts
 
-      - name: Run paired candidate diagnostic
-        run: |
-          OUT="tuning-results/${{ matrix.label }}"
-          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
-            --augment "${{ matrix.augment }}" \
-            --games "${{ matrix.games }}" \
-            --max-rounds 60 \
-            --output-dir "$OUT"
+      - name: Run all-augment natural screening
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --games 6000
+          --min-samples 120
+          --max-actions 100000
+          --output-dir tuning-results/full-recheck
+          --fail-on-incomplete
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: tuning-${{ matrix.label }}
-          path: tuning-results/
+          name: tuning-full-recheck-natural-18k
+          path: tuning-results/full-recheck/
           if-no-files-found: error
           retention-days: 14
