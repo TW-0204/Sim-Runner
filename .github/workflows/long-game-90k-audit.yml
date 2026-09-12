@@ -1,11 +1,6 @@
 name: Long Game 90K Audit
 
 on:
-  push:
-    branches:
-      - balance/diagnostics-v1
-    paths:
-      - '.github/workflows/long-game-90k-audit.yml'
   workflow_dispatch:
 
 permissions:
