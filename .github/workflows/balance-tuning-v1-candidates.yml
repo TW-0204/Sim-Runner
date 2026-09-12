@@ -40,9 +40,11 @@ jobs:
 
           threshold = int(os.environ['THRESHOLD'])
 
-          # Candidate rule: only GAE rolled after AUG-017 acquisition is counted.
-          # The threshold-reaching GAE unlocks the augment but grants no extra roll.
-          # Every later GAE grants one extra roll; YUT/MO grant none while owned.
+          # Candidate rule:
+          # - only GAE rolled after AUG-017 acquisition is counted
+          # - before unlock, normal YUT/MO extra rolls remain intact
+          # - the threshold-reaching GAE unlocks but grants no extra roll
+          # - after unlock, each later GAE grants one extra roll and YUT/MO grant none
           p = Path('src/lib/augments/effects.ts')
           s = p.read_text()
           pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
@@ -58,9 +60,10 @@ jobs:
             ownedIds: string[],
           ) {{
             if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
-            if (face !== "GAE") return false;
             const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;
-            return countBeforeThisRoll + 1 > {threshold};
+            if (face === "GAE") return countBeforeThisRoll + 1 > {threshold};
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < {threshold};
+            return false;
           }}
 
           export function consumeFaceExtraRollGrant(
@@ -70,20 +73,26 @@ jobs:
             ownedIds: string[],
           ) {{
             if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
-            if (face !== "GAE") return false;
 
             const runtime = runtimeForPlayer(engine, userId);
-            const countAfterThisRoll = (runtime.g01GameGaeCount ?? 0) + 1;
-            runtime.g01GameGaeCount = countAfterThisRoll;
+            const countBeforeThisRoll = runtime.g01GameGaeCount ?? 0;
 
-            if (countAfterThisRoll === {threshold} && runtime.g01UnlockRound == null) {{
-              runtime.g01UnlockRound = engine.round;
-              runtime.g01UnlockTurnNumber = engine.turnNumber;
+            if (face === "GAE") {{
+              const countAfterThisRoll = countBeforeThisRoll + 1;
+              runtime.g01GameGaeCount = countAfterThisRoll;
+
+              if (countAfterThisRoll === {threshold} && runtime.g01UnlockRound == null) {{
+                runtime.g01UnlockRound = engine.round;
+                runtime.g01UnlockTurnNumber = engine.turnNumber;
+              }}
+
+              const grant = countAfterThisRoll > {threshold};
+              if (grant) runtime.g01PostUnlockExtraRolls = (runtime.g01PostUnlockExtraRolls ?? 0) + 1;
+              return grant;
             }}
 
-            const grant = countAfterThisRoll > {threshold};
-            if (grant) runtime.g01PostUnlockExtraRolls = (runtime.g01PostUnlockExtraRolls ?? 0) + 1;
-            return grant;
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < {threshold};
+            return false;
           }}
 
           export function armA04OnAcquisition'''
