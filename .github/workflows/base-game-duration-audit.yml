@@ -1,11 +1,6 @@
 name: Base Game Duration Audit
 
 on:
-  push:
-    branches:
-      - balance/diagnostics-v1
-    paths:
-      - '.github/workflows/base-game-duration-audit.yml'
   workflow_dispatch:
 
 permissions:
