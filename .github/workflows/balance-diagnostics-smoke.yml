@@ -1,0 +1,45 @@
+name: Balance Diagnostics Smoke
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/balance-diagnostics-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Canonical regression gate
+        run: |
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-id-integrity-check.ts
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-runtime-registry-check.ts
+          node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
+      - name: Long-game diagnostic smoke
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/long-game-diagnose.ts
+          --player-count 2 --games 100 --seed-start 800000 --batch-id smoke
+          --round-cap 30 --extended-round-cap 100 --output-dir smoke-long
+      - name: Paired augment diagnostic smoke
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment AUG-013 --games 25 --max-rounds 60 --output-dir smoke-augment
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balance-diagnostics-smoke
+          path: |
+            smoke-long/
+            smoke-augment/
+          if-no-files-found: warn
+          retention-days: 3
