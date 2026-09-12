@@ -108,9 +108,21 @@ Initial 200-pair first-acquisition results:
 | 2 | +4.0%p | -1.5%p | -0.5%p |
 | 3 | +6.0%p | +6.5%p | +7.5%p |
 
-The 3-use candidate was repeated at 500 valid pairs per player count and produced +11.0%p at 2P, +7.0%p at 3P, and +7.0%p at 4P. This is the leading finite-use candidate from the current bot baseline.
+The 3-use candidate was repeated at 500 valid pairs per player count with the original simulator policy, which always selects `MO`. It produced +11.0%p at 2P, +7.0%p at 3P, and +7.0%p at 4P.
 
-Important limitation: the current simulation bot selects `MO` whenever it uses God Hand. A human can choose DO, GAE, GEOL, YUT, or MO situationally. The finite-use result should therefore be treated as a strong screening result, not the final ceiling of optimal human play.
+Because a human can choose DO, GAE, GEOL, YUT, or MO situationally, two additional 500-pair policies were tested:
+
+| 3-use face policy | 2P | 3P | 4P |
+| --- | ---: | ---: | ---: |
+| Always MO | +11.0%p | +7.0%p | +7.0%p |
+| Board-score situational choice | +6.0%p | +0.8%p | +0.6%p |
+| MO default; deviate only for strictly better immediate finish/capture | +6.0%p | +0.8%p | +0.8%p |
+
+The situational policies did not reveal a higher ceiling than always choosing MO. They frequently selected lower faces for immediate captures and increased captures substantially, but this did not translate into a higher win rate. In 3P/4P, the board-score policy selected MO only about one third of the time and strongly favored GEOL/GAE capture opportunities. A more conservative tactical policy produced nearly the same behavior and result because many deviations were immediate capture improvements over MO.
+
+For balance purposes, the strongest measured policy is therefore the conservative reference: always MO at +11/+7/+7 percentage points. This remains far below the old repeating-recharge version at roughly +18 to +22.5 percentage points. The current balance candidate is **three selectable basic-roll overrides after acquisition, with no recharge**. A 2-use reduction is not currently recommended because the 3-use candidate is already substantially stabilized and the earlier 2-use screen was close to neutral or weak in 3P/4P.
+
+This is still a candidate only. The canonical catalog and actual game rules remain unchanged until the design explicitly accepts the rework.
 
 ### AUG-017 개판
 
