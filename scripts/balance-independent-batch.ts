@@ -52,12 +52,22 @@ const elapsedSeconds = (Date.now() - startedAt) / 1000;
 const incompleteGames = result.summary.stalledGames + result.summary.actionLimitGames;
 const longGameGames = result.summary.longGameGames;
 const problemGames = incompleteGames + longGameGames;
-const incompleteDetails = result.games
-  .filter((game) => game.status !== "COMPLETED" && game.status !== "DRAW")
+const technicalIncompleteDetails = result.games
+  .filter((game) => game.status === "STALLED" || game.status === "ACTION_LIMIT")
   .map((game) => ({
     seed: game.seed,
     status: game.status,
     error: game.error ?? null,
+    round: game.round,
+    turnNumber: game.turnNumber,
+    actions: game.actions,
+    acquisitions: game.acquisitions,
+    failureDiagnostics: game.failureDiagnostics ?? null,
+  }));
+const longGameDetails = result.games
+  .filter((game) => game.status === "LONG_GAME")
+  .map((game) => ({
+    seed: game.seed,
     round: game.round,
     turnNumber: game.turnNumber,
     actions: game.actions,
@@ -78,21 +88,30 @@ const payload = {
     maxRounds: maxRounds ?? null,
   },
   summary: result.summary,
-  incompleteGames: incompleteDetails,
+  technicalIncompleteGames: technicalIncompleteDetails,
+  longGames: longGameDetails,
 };
 
 mkdirSync(outputDir, { recursive: true });
 const baseName = `batch-${playerCount}p-${batchId}-seed-${seedStart}`;
 const jsonPath = join(outputDir, `${baseName}.json`);
 const mdPath = join(outputDir, `${baseName}.md`);
-const incompleteLines = incompleteDetails.length > 0
+const incompleteLines = technicalIncompleteDetails.length > 0
   ? [
       "",
-      "## Incomplete seeds",
+      "## Technical incomplete seeds",
       "",
-      ...incompleteDetails.map((game) => (
+      ...technicalIncompleteDetails.map((game) => (
         `- ${game.seed}: ${game.status} · round ${game.round} · turn ${game.turnNumber} · actions ${game.actions}${game.error ? ` · ${game.error}` : ""}`
       )),
+    ]
+  : [];
+const longGameLines = longGameDetails.length > 0
+  ? [
+      "",
+      "## Long-game seeds",
+      "",
+      ...longGameDetails.map((game) => `- ${game.seed}: round ${game.round} · turn ${game.turnNumber} · actions ${game.actions}`),
     ]
   : [];
 
@@ -104,22 +123,24 @@ writeFileSync(mdPath, [
   `- games: ${games.toLocaleString()}`,
   `- seeds: ${seedStart}–${seedStart + games - 1}`,
   `- completed: ${result.summary.completedGames.toLocaleString()}/${games.toLocaleString()}`,
-  `- draws: ${result.summary.drawGames.toLocaleString()}`,
+  `- rules draws: ${result.summary.drawGames.toLocaleString()}`,
   `- long games (round cap): ${longGameGames.toLocaleString()}`,
   `- >15R rate: ${(result.summary.durationBands.over15Rate * 100).toFixed(2)}%`,
   `- >20R rate: ${(result.summary.durationBands.over20Rate * 100).toFixed(2)}%`,
   `- max rounds: ${maxRounds ?? "none"}`,
   `- stalled: ${result.summary.stalledGames}`,
   `- action limit: ${result.summary.actionLimitGames}`,
+  `- problem games: ${problemGames}`,
   `- elapsed: ${elapsedSeconds.toFixed(1)}s`,
   ...incompleteLines,
+  ...longGameLines,
   "",
 ].join("\n"), "utf-8");
 
 console.error(`[independent] ${playerCount}p batch ${batchId} complete in ${elapsedSeconds.toFixed(1)}s`);
-console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${longGameGames} long, ${incompleteGames} engine-incomplete, ${problemGames} problem games`);
-if (incompleteDetails.length > 0) {
-  console.error(`[independent] incomplete seeds: ${incompleteDetails.map((game) => game.seed).join(", ")}`);
+console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${longGameGames} long, ${incompleteGames} technical-incomplete, ${problemGames} problem games`);
+if (technicalIncompleteDetails.length > 0) {
+  console.error(`[independent] technical incomplete seeds: ${technicalIncompleteDetails.map((game) => game.seed).join(", ")}`);
 }
 console.log(jsonPath);
 
