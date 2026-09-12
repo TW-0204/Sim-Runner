@@ -1,0 +1,109 @@
+name: Bot Policy Duration Audit
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/bot-policy-duration-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        include:
+          - { label: baseline, capture: 85, onboard: 45, players: 2 }
+          - { label: baseline, capture: 85, onboard: 45, players: 3 }
+          - { label: baseline, capture: 85, onboard: 45, players: 4 }
+          - { label: capture20, capture: 20, onboard: 45, players: 2 }
+          - { label: capture20, capture: 20, onboard: 45, players: 3 }
+          - { label: capture20, capture: 20, onboard: 45, players: 4 }
+          - { label: spread10, capture: 85, onboard: 10, players: 2 }
+          - { label: spread10, capture: 85, onboard: 10, players: 3 }
+          - { label: spread10, capture: 85, onboard: 10, players: 4 }
+          - { label: both, capture: 20, onboard: 10, players: 2 }
+          - { label: both, capture: 20, onboard: 10, players: 3 }
+          - { label: both, capture: 20, onboard: 10, players: 4 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply temporary bot weights in runner only
+        env:
+          CAPTURE_REWARD: ${{ matrix.capture }}
+          ONBOARD_BASE: ${{ matrix.onboard }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path('src/lib/simulation/game.ts')
+          text = path.read_text()
+          old_capture = 'return base + capturedEnemyPieceCount(before, after, userId) * 85;'
+          new_capture = f"return base + capturedEnemyPieceCount(before, after, userId) * {os.environ['CAPTURE_REWARD']};"
+          old_onboard = 'else if (piece.status === "ON_BOARD") score += 45 + piece.pathHistory.length * 1.5;'
+          new_onboard = f"else if (piece.status === \"ON_BOARD\") score += {os.environ['ONBOARD_BASE']} + piece.pathHistory.length * 1.5;"
+          if text.count(old_capture) != 1:
+              raise SystemExit(f'capture score anchor count was {text.count(old_capture)}, expected 1')
+          if text.count(old_onboard) != 1:
+              raise SystemExit(f'on-board score anchor count was {text.count(old_onboard)}, expected 1')
+          text = text.replace(old_capture, new_capture).replace(old_onboard, new_onboard)
+          path.write_text(text)
+          PY
+      - name: Run duration audit
+        env:
+          LABEL: ${{ matrix.label }}
+          PLAYERS: ${{ matrix.players }}
+          CAPTURE_REWARD: ${{ matrix.capture }}
+          ONBOARD_BASE: ${{ matrix.onboard }}
+        run: |
+          SEED_START=$((1200000 + PLAYERS * 100000))
+          node --import ./scripts/register-ts-hooks.mjs scripts/bot-policy-duration-audit.ts \
+            --label "$LABEL" \
+            --player-count "$PLAYERS" \
+            --games 2000 \
+            --seed-start "$SEED_START" \
+            --max-rounds 100 \
+            --capture-reward "$CAPTURE_REWARD" \
+            --onboard-base "$ONBOARD_BASE" \
+            --output-dir bot-policy-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bot-policy-${{ matrix.label }}-${{ matrix.players }}p
+          path: bot-policy-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  merge:
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bot-policy-*
+          path: bot-policy-results
+          merge-multiple: true
+      - name: Merge policy comparison
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/bot-policy-duration-merge.ts
+          --input-dir bot-policy-results
+          --output-dir bot-policy-merged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bot-policy-duration-summary
+          path: bot-policy-merged/
+          if-no-files-found: error
+          retention-days: 7
