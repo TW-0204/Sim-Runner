@@ -1,11 +1,6 @@
 name: Bot Policy Duration Audit
 
 on:
-  push:
-    branches:
-      - balance/diagnostics-v1
-    paths:
-      - '.github/workflows/bot-policy-duration-audit.yml'
   workflow_dispatch:
 
 permissions:
