@@ -1,0 +1,85 @@
+name: Long Game 90K Audit
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/long-game-90k-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        include:
+          - { player_count: 2, batch_id: 1, seed_start: 800000 }
+          - { player_count: 2, batch_id: 2, seed_start: 806000 }
+          - { player_count: 2, batch_id: 3, seed_start: 812000 }
+          - { player_count: 2, batch_id: 4, seed_start: 818000 }
+          - { player_count: 2, batch_id: 5, seed_start: 824000 }
+          - { player_count: 3, batch_id: 1, seed_start: 900000 }
+          - { player_count: 3, batch_id: 2, seed_start: 906000 }
+          - { player_count: 3, batch_id: 3, seed_start: 912000 }
+          - { player_count: 3, batch_id: 4, seed_start: 918000 }
+          - { player_count: 3, batch_id: 5, seed_start: 924000 }
+          - { player_count: 4, batch_id: 1, seed_start: 1000000 }
+          - { player_count: 4, batch_id: 2, seed_start: 1006000 }
+          - { player_count: 4, batch_id: 3, seed_start: 1012000 }
+          - { player_count: 4, batch_id: 4, seed_start: 1018000 }
+          - { player_count: 4, batch_id: 5, seed_start: 1024000 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Diagnose duration and rerun cap cases
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/long-game-diagnose.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count ${{ matrix.player_count }}
+          --batch-id ${{ matrix.batch_id }}
+          --seed-start ${{ matrix.seed_start }}
+          --games 6000
+          --round-cap 30
+          --extended-round-cap 100
+          --output-dir long-game-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: long-game-${{ matrix.player_count }}p-${{ matrix.batch_id }}
+          path: long-game-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  merge:
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: long-game-*
+          path: long-game-results
+          merge-multiple: true
+      - name: Merge 90K duration audit
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/long-game-merge.ts
+          --input-dir long-game-results
+          --output-dir long-game-merged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: long-game-90k-summary
+          path: long-game-merged/
+          if-no-files-found: error
+          retention-days: 7
