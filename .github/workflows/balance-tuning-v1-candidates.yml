@@ -19,14 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: 'godhand-next-3-smart-face-trace', augment: 'AUG-044', uses: 3, games: 500 }
+          - { label: 'godhand-next-3-tactical', augment: 'AUG-044', uses: 3, games: 500 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
 
-      - name: Apply finite God Hand smart policy with face telemetry inside runner only
+      - name: Apply finite God Hand tactical policy with face telemetry inside runner only
         env:
           USES: ${{ matrix.uses }}
         run: |
@@ -92,7 +92,8 @@ jobs:
           s = s.replace(marker, marker + '  godHandSmartFaceCountsByUser?: Record<string, Record<string, number>>;\n', 1)
           p.write_text(s)
 
-          # Bot-only policy: evaluate all five selectable faces against the current board.
+          # Bot-only tactical policy: MO is the default. Deviate only when another face
+          # immediately finishes more own pieces or captures more enemy pieces than MO.
           p = Path('src/lib/simulation/game.ts')
           s = p.read_text()
           old_import = '''import {
@@ -130,16 +131,34 @@ jobs:
                 : null;
 
             const result = executeRollLifecycle({'''
-          new_execute = '''const GOD_HAND_SMART_FACES: RollFace[] = ["MO", "YUT", "GEOL", "GAE", "DO"];
+          new_execute = '''const GOD_HAND_TACTICAL_FACES: RollFace[] = ["MO", "YUT", "GEOL", "GAE", "DO"];
 
-          function godHandPreviewScore(
+          type GodHandTacticalPreview = {
+            face: RollFace;
+            finishedGain: number;
+            captures: number;
+            positionScore: number;
+          };
+
+          function finishedPieceCount(engine: GameEngineState, userId: string) {
+            return engine.players.find((candidate) => candidate.userId === userId)?.pieces
+              .filter((piece) => piece.status === "FINISHED").length ?? 0;
+          }
+
+          function godHandTacticalPreview(
             context: SimulationContext,
             engine: GameEngineState,
             userId: string,
             face: RollFace,
-          ) {
+          ): GodHandTacticalPreview {
             const owned = actorOwned(context, userId);
             const setups = actorSetups(context, userId);
+            const fallback: GodHandTacticalPreview = {
+              face,
+              finishedGain: 0,
+              captures: 0,
+              positionScore: Number.NEGATIVE_INFINITY,
+            };
             try {
               const preview = applyGodHandRoll(
                 engine,
@@ -148,64 +167,86 @@ jobs:
                 owned,
                 setups,
               );
-              const queuedRollValue = preview.pendingRolls.length * 12;
               const movementPreview = structuredClone(preview);
               if (movementPreview.stage === "AWAITING_ROLL" && movementPreview.results.length > 0) {
                 movementPreview.pendingRolls = [];
                 movementPreview.stage = "MOVING";
               }
+              if (movementPreview.stage !== "MOVING") return fallback;
 
-              let bestScore = playerPositionScore(movementPreview, userId, owned, setups);
-              if (movementPreview.stage === "MOVING") {
-                const moveOwned = moveOwnedIdsForAthlete(owned);
-                const legalOptions = legalMoveOptionsWithAugments(
-                  movementPreview,
-                  userId,
-                  owned,
-                  setups,
-                  context.ownedByUser,
-                  moveOwned,
-                );
-                for (const option of legalOptions) {
-                  try {
-                    const next = executeMoveAction(
-                      context,
-                      movementPreview,
-                      userId,
-                      moveArgsForTarget(
-                        option.groupId,
-                        option.result,
-                        option.target,
-                        owned.includes("AUG-031"),
-                      ),
-                    );
-                    bestScore = Math.max(bestScore, outcomeScore(context, movementPreview, next, userId));
-                  } catch {
-                    // Ignore invalid preview moves exactly as the normal bot scorer does.
-                  }
+              const beforeFinished = finishedPieceCount(movementPreview, userId);
+              const moveOwned = moveOwnedIdsForAthlete(owned);
+              const legalOptions = legalMoveOptionsWithAugments(
+                movementPreview,
+                userId,
+                owned,
+                setups,
+                context.ownedByUser,
+                moveOwned,
+              );
+              let best = fallback;
+              for (const option of legalOptions) {
+                try {
+                  const next = executeMoveAction(
+                    context,
+                    movementPreview,
+                    userId,
+                    moveArgsForTarget(
+                      option.groupId,
+                      option.result,
+                      option.target,
+                      owned.includes("AUG-031"),
+                    ),
+                  );
+                  const candidate: GodHandTacticalPreview = {
+                    face,
+                    finishedGain: Math.max(0, finishedPieceCount(next, userId) - beforeFinished),
+                    captures: capturedEnemyPieceCount(movementPreview, next, userId),
+                    positionScore: playerPositionScore(next, userId, owned, setups),
+                  };
+                  if (
+                    candidate.finishedGain > best.finishedGain
+                    || (candidate.finishedGain === best.finishedGain && candidate.captures > best.captures)
+                    || (
+                      candidate.finishedGain === best.finishedGain
+                      && candidate.captures === best.captures
+                      && candidate.positionScore > best.positionScore
+                    )
+                  ) best = candidate;
+                } catch {
+                  // Ignore invalid preview moves exactly as the normal bot scorer does.
                 }
               }
-              return bestScore + queuedRollValue;
+              return best;
             } catch {
-              return Number.NEGATIVE_INFINITY;
+              return fallback;
             }
           }
 
-          function chooseSmartGodHandFace(
+          function chooseTacticalGodHandFace(
             context: SimulationContext,
             engine: GameEngineState,
             userId: string,
           ): RollFace {
-            let bestFace: RollFace = "MO";
-            let bestScore = Number.NEGATIVE_INFINITY;
-            for (const face of GOD_HAND_SMART_FACES) {
-              const score = godHandPreviewScore(context, engine, userId, face);
-              if (score > bestScore) {
-                bestScore = score;
-                bestFace = face;
-              }
-            }
-            return bestFace;
+            const previews = GOD_HAND_TACTICAL_FACES.map((face) => godHandTacticalPreview(context, engine, userId, face));
+            const mo = previews.find((item) => item.face === "MO")!;
+
+            const betterFinish = previews
+              .filter((item) => item.finishedGain > mo.finishedGain)
+              .sort((left, right) =>
+                right.finishedGain - left.finishedGain
+                || right.captures - left.captures
+                || right.positionScore - left.positionScore
+              )[0];
+            if (betterFinish) return betterFinish.face;
+
+            const betterCapture = previews
+              .filter((item) => item.finishedGain === mo.finishedGain && item.captures > mo.captures)
+              .sort((left, right) =>
+                right.captures - left.captures
+                || right.positionScore - left.positionScore
+              )[0];
+            return betterCapture?.face ?? "MO";
           }
 
           function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
@@ -216,7 +257,7 @@ jobs:
               && owned.includes("AUG-044")
               && godHandChargeCount(engine, userId, owned) > 0
             ) {
-              godHandFace = chooseSmartGodHandFace(context, engine, userId);
+              godHandFace = chooseTacticalGodHandFace(context, engine, userId);
               const counts = context.godHandSmartFaceCountsByUser[userId] ?? (context.godHandSmartFaceCountsByUser[userId] = {});
               counts[godHandFace] = (counts[godHandFace] ?? 0) + 1;
             }
