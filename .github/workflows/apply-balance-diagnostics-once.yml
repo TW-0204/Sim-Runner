@@ -1,0 +1,40 @@
+name: Apply Balance Diagnostics Once
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: balance/diagnostics-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply diagnostics migration
+        run: python archive/migrations/add-balance-diagnostics-v1.py
+      - name: Augment ID integrity
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-id-integrity-check.ts
+      - name: Runtime registry
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-runtime-registry-check.ts
+      - name: Canonical smoke
+        run: bash scripts/run-augment-016-037-smoke.sh
+      - name: Historical exact regressions
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/canonical-regression-seeds.ts
+      - name: Commit migrated diagnostics
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/simulation/game.ts src/lib/simulation/metrics.ts scripts/balance-independent-batch.ts scripts/balance-independent-merge.ts
+          git commit -m 'diagnostics: classify long games and preserve paired rng'
+          git push origin HEAD:balance/diagnostics-v1
