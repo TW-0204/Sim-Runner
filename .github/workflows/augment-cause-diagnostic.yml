@@ -1,0 +1,51 @@
+name: Augment Cause Diagnostic
+
+on:
+  push:
+    branches:
+      - experiment/s16
+      - 'balance/**'
+    paths:
+      - 'diagnostics/augment-request.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Read request
+        id: request
+        run: |
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const request = JSON.parse(fs.readFileSync('diagnostics/augment-request.json', 'utf8'));
+          if (!/^AUG-\d{3}$/.test(request.augmentId)) throw new Error('augmentId must be canonical AUG-###');
+          const games = Number(request.games ?? 500);
+          const maxRounds = Number(request.maxRounds ?? 60);
+          if (!Number.isInteger(games) || games < 1) throw new Error('games must be a positive integer');
+          if (!Number.isInteger(maxRounds) || maxRounds < 1) throw new Error('maxRounds must be a positive integer');
+          console.log(`augment=${request.augmentId}`);
+          console.log(`games=${games}`);
+          console.log(`max_rounds=${maxRounds}`);
+          NODE
+      - name: Run paired cause diagnostic
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment "${{ steps.request.outputs.augment }}"
+          --games "${{ steps.request.outputs.games }}"
+          --max-rounds "${{ steps.request.outputs.max_rounds }}"
+          --output-dir augment-diagnostic-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cause-${{ steps.request.outputs.augment }}-${{ github.run_number }}
+          path: augment-diagnostic-results/
+          if-no-files-found: error
+          retention-days: 14
