@@ -5,7 +5,7 @@ import type { SpecialOfferShown } from "./special-offers";
 import type { TriggerCountsByUser } from "./triggers";
 import type { FirstAugmentLeaderCheckpoint, G01TriggerBreakdownByUser } from "./telemetry";
 
-export const BALANCE_BOT_VERSION = "balance-bot-v0.3.0";
+export const BALANCE_BOT_VERSION = "balance-bot-v0.2.1";
 
 export type AugmentAcquisition = {
   userId: string;
