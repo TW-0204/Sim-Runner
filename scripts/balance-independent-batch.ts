@@ -33,6 +33,7 @@ const maxRoundsArg = argument("max-rounds");
 const maxRounds = maxRoundsArg == null ? undefined : positiveInteger("max-rounds", maxRoundsArg, 30);
 const outputDir = argument("output-dir") ?? "independent-results";
 const failOnIncomplete = flag("fail-on-incomplete");
+const failOnLongGame = flag("fail-on-long-game");
 const ruleset = getBalanceRuleset(rulesetId);
 
 const startedAt = Date.now();
@@ -49,6 +50,8 @@ const result = runSimulationBatch({
 
 const elapsedSeconds = (Date.now() - startedAt) / 1000;
 const incompleteGames = result.summary.stalledGames + result.summary.actionLimitGames;
+const longGameGames = result.summary.longGameGames;
+const problemGames = incompleteGames + longGameGames;
 const incompleteDetails = result.games
   .filter((game) => game.status !== "COMPLETED" && game.status !== "DRAW")
   .map((game) => ({
@@ -102,6 +105,9 @@ writeFileSync(mdPath, [
   `- seeds: ${seedStart}–${seedStart + games - 1}`,
   `- completed: ${result.summary.completedGames.toLocaleString()}/${games.toLocaleString()}`,
   `- draws: ${result.summary.drawGames.toLocaleString()}`,
+  `- long games (round cap): ${longGameGames.toLocaleString()}`,
+  `- >15R rate: ${(result.summary.durationBands.over15Rate * 100).toFixed(2)}%`,
+  `- >20R rate: ${(result.summary.durationBands.over20Rate * 100).toFixed(2)}%`,
   `- max rounds: ${maxRounds ?? "none"}`,
   `- stalled: ${result.summary.stalledGames}`,
   `- action limit: ${result.summary.actionLimitGames}`,
@@ -111,10 +117,11 @@ writeFileSync(mdPath, [
 ].join("\n"), "utf-8");
 
 console.error(`[independent] ${playerCount}p batch ${batchId} complete in ${elapsedSeconds.toFixed(1)}s`);
-console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${result.summary.drawGames} draws, ${incompleteGames} incomplete`);
+console.error(`[independent] ${result.summary.completedGames}/${games} completed, ${longGameGames} long, ${incompleteGames} engine-incomplete, ${problemGames} problem games`);
 if (incompleteDetails.length > 0) {
   console.error(`[independent] incomplete seeds: ${incompleteDetails.map((game) => game.seed).join(", ")}`);
 }
 console.log(jsonPath);
 
 if (failOnIncomplete && incompleteGames > 0) process.exitCode = 1;
+if (failOnLongGame && longGameGames > 0) process.exitCode = 1;

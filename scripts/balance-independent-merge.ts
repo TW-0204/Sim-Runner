@@ -91,7 +91,9 @@ const ruleset = getBalanceRuleset(rulesetId);
 const excludedIds = new Set(Object.values(ruleset.excludedAugmentIdsByLogicalPhase ?? {}).flatMap((ids) => ids ?? []));
 const totalGames = batches.reduce((sum, batch) => sum + batch.metadata.games, 0);
 const totalDraws = batches.reduce((sum, batch) => sum + (batch.summary.drawGames ?? 0), 0);
+const totalLongGames = batches.reduce((sum, batch) => sum + (batch.summary.longGameGames ?? 0), 0);
 const totalIncomplete = batches.reduce((sum, batch) => sum + batch.summary.stalledGames + batch.summary.actionLimitGames, 0);
+const totalProblemGames = totalLongGames + totalIncomplete;
 const gamesPerBatch = new Set(batches.map((batch) => batch.metadata.games));
 const gamesPerBatchText = gamesPerBatch.size === 1 ? `${[...gamesPerBatch][0]?.toLocaleString()}판` : "배치별 상이";
 
@@ -102,6 +104,10 @@ const rows = AUGMENTS.map((augment) => {
     wins: number;
     drawGamesOwned: number;
     drawRate: number | null;
+    longGameGamesOwned: number;
+    longGameRate: number | null;
+    over15Rate: number | null;
+    over20Rate: number | null;
     pooledWinRate: number | null;
     batchWinRates: Array<number | null>;
     spreadPp: number | null;
@@ -118,8 +124,14 @@ const rows = AUGMENTS.map((augment) => {
     const gamesOwned = stats.reduce((sum, stat) => sum + (stat?.gamesOwned ?? 0), 0);
     const wins = stats.reduce((sum, stat) => sum + (stat?.wins ?? 0), 0);
     const drawGamesOwned = stats.reduce((sum, stat) => sum + (stat?.drawGamesOwned ?? 0), 0);
-    const terminalGamesOwned = gamesOwned + drawGamesOwned;
+    const longGameGamesOwned = stats.reduce((sum, stat) => sum + (stat?.longGameGamesOwned ?? 0), 0);
+    const completedOver15GamesOwned = stats.reduce((sum, stat) => sum + (stat?.completedOver15GamesOwned ?? 0), 0);
+    const completedOver20GamesOwned = stats.reduce((sum, stat) => sum + (stat?.completedOver20GamesOwned ?? 0), 0);
+    const terminalGamesOwned = gamesOwned + drawGamesOwned + longGameGamesOwned;
     const drawRate = terminalGamesOwned > 0 ? drawGamesOwned / terminalGamesOwned : null;
+    const longGameRate = terminalGamesOwned > 0 ? longGameGamesOwned / terminalGamesOwned : null;
+    const over15Rate = terminalGamesOwned > 0 ? (completedOver15GamesOwned + longGameGamesOwned) / terminalGamesOwned : null;
+    const over20Rate = terminalGamesOwned > 0 ? (completedOver20GamesOwned + longGameGamesOwned) / terminalGamesOwned : null;
     const batchWinRates = stats.map((stat) => stat && stat.gamesOwned > 0 ? stat.wins / stat.gamesOwned : null);
     const presentRates = batchWinRates.filter((value): value is number => value != null);
     const spreadPp = presentRates.length >= 2 ? (Math.max(...presentRates) - Math.min(...presentRates)) * 100 : null;
@@ -130,6 +142,10 @@ const rows = AUGMENTS.map((augment) => {
       wins,
       drawGamesOwned,
       drawRate,
+      longGameGamesOwned,
+      longGameRate,
+      over15Rate,
+      over20Rate,
       pooledWinRate: classified.winRate,
       batchWinRates,
       spreadPp,
@@ -167,7 +183,7 @@ function cellText(row: typeof rows[number], playerCount: 2 | 3 | 4) {
   const batchRates = cell.batchWinRates.map((rate) => pct(rate)).join(" / ");
   const delta = cell.deltaPp == null ? "—" : `${cell.deltaPp >= 0 ? "+" : ""}${cell.deltaPp.toFixed(1)}%p`;
   const spread = cell.spreadPp == null ? "—" : `${cell.spreadPp.toFixed(1)}pp`;
-  return `${pct(cell.pooledWinRate)} (${delta}, decisive n=${cell.gamesOwned})<br>draw ${pct(cell.drawRate)} (n=${cell.drawGamesOwned})<br>${batchRates}<br>spread ${spread}`;
+  return `${pct(cell.pooledWinRate)} (${delta}, decisive n=${cell.gamesOwned})<br>>15R ${pct(cell.over15Rate)} · >20R ${pct(cell.over20Rate)} · 30R cap ${pct(cell.longGameRate)} (n=${cell.longGameGamesOwned})<br>${batchRates}<br>spread ${spread}`;
 }
 
 const markdown = [
@@ -175,8 +191,10 @@ const markdown = [
   "",
   `- 총 시뮬레이션: ${totalGames.toLocaleString()}판`,
   `- 구성: 2/3/4인 × 독립 ${gamesPerBatchText} ${expectedBatches}배치 = ${expectedBatches * 3}개 job`,
-  `- 무승부: ${totalDraws.toLocaleString()}판`,
-  `- 미완료 게임: ${totalIncomplete.toLocaleString()}판`,
+  `- 규칙상 무승부: ${totalDraws.toLocaleString()}판`,
+  `- 30R 초과 장기게임: ${totalLongGames.toLocaleString()}판`,
+  `- 엔진 미완료(STALLED/ACTION_LIMIT): ${totalIncomplete.toLocaleString()}판`,
+  `- 문제게임 합계: ${totalProblemGames.toLocaleString()}판`,
   `- 최소 유효 보유 표본: ${minSamples.toLocaleString()}판`,
   `- 활성 catalog 증강 수: ${AUGMENTS.length.toLocaleString()}개`,
   `- 배치에서 관측된 증강 ID 수: ${observedIds.size.toLocaleString()}개`,
@@ -186,7 +204,7 @@ const markdown = [
   "",
   ...batches
     .sort((a, b) => a.metadata.playerCount - b.metadata.playerCount || Number(a.metadata.batchId) - Number(b.metadata.batchId))
-    .map((batch) => `- ${batch.metadata.playerCount}P #${batch.metadata.batchId}: seeds ${batch.metadata.seedStart}–${batch.metadata.seedEnd}, ${batch.metadata.elapsedSeconds.toFixed(1)}s, completed ${batch.summary.completedGames}/${batch.metadata.games}, draws ${batch.summary.drawGames ?? 0}`),
+    .map((batch) => `- ${batch.metadata.playerCount}P #${batch.metadata.batchId}: seeds ${batch.metadata.seedStart}–${batch.metadata.seedEnd}, ${batch.metadata.elapsedSeconds.toFixed(1)}s, completed ${batch.summary.completedGames}/${batch.metadata.games}, >15R ${(batch.summary.durationBands.over15Rate * 100).toFixed(2)}%, >20R ${(batch.summary.durationBands.over20Rate * 100).toFixed(2)}%, 30R cap ${batch.summary.longGameGames ?? 0}`),
   "",
   "| 증강 | 등급 | 2인 | 3인 | 4인 | 판정 | 정밀검사 |",
   "|---|---|---|---|---|---|---|",
@@ -203,7 +221,9 @@ const report = {
   generatedAt: new Date().toISOString(),
   totalGames,
   totalDraws,
+  totalLongGames,
   totalIncomplete,
+  totalProblemGames,
   minSamples,
   expectedBatchesPerPlayerCount: expectedBatches,
   activeCatalogAugmentCount: AUGMENTS.length,

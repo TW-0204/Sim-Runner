@@ -88,6 +88,7 @@ type SimulationOptions = {
   maxRounds?: number;
   forcedAugmentId?: string;
   forcedAcquisitionIndex?: number;
+  preserveSelectionRng?: boolean;
 };
 
 type MoveArgs = GameMoveArgs;
@@ -108,8 +109,10 @@ type SimulationContext = {
   ruleset: BalanceRuleset;
   forcedAugmentId?: string;
   forcedAcquisitionIndex?: number;
+  preserveSelectionRng: boolean;
   tokenCounter: number;
   actions: number;
+  performanceByUser: Record<string, { rolls: number; moves: number; enemyPiecesCaptured: number; ownPiecesSentToWaiting: number; piecesFinished: number }>;
   s16BasicRollsByUser: Record<string, number>;
   s16NakByUser: Record<string, number>;
 };
@@ -220,6 +223,54 @@ function ownedIdsForOffers(context: SimulationContext) {
   }));
 }
 
+function performanceFor(context: SimulationContext, userId: string) {
+  context.performanceByUser[userId] ??= {
+    rolls: 0,
+    moves: 0,
+    enemyPiecesCaptured: 0,
+    ownPiecesSentToWaiting: 0,
+    piecesFinished: 0,
+  };
+  return context.performanceByUser[userId];
+}
+
+function ownPiecesSentToWaitingCount(before: GameEngineState, after: GameEngineState, userId: string) {
+  const beforePlayer = before.players.find((player) => player.userId === userId);
+  const afterPlayer = after.players.find((player) => player.userId === userId);
+  if (!beforePlayer || !afterPlayer) return 0;
+  return beforePlayer.pieces.filter((piece) => {
+    const next = afterPlayer.pieces.find((candidate) => candidate.id === piece.id);
+    return piece.status === "ON_BOARD" && next?.status === "WAITING";
+  }).length;
+}
+
+function piecesFinishedCount(before: GameEngineState, after: GameEngineState, userId: string) {
+  const beforePlayer = before.players.find((player) => player.userId === userId);
+  const afterPlayer = after.players.find((player) => player.userId === userId);
+  if (!beforePlayer || !afterPlayer) return 0;
+  return beforePlayer.pieces.filter((piece) => {
+    const next = afterPlayer.pieces.find((candidate) => candidate.id === piece.id);
+    return piece.status !== "FINISHED" && next?.status === "FINISHED";
+  }).length;
+}
+
+function recordPerformanceTransition(
+  context: SimulationContext,
+  before: GameEngineState,
+  after: GameEngineState,
+  actorUserId: string,
+  actionKind: SimulationActionKind,
+) {
+  const actor = performanceFor(context, actorUserId);
+  if (actionKind === "roll") actor.rolls += 1;
+  if (actionKind === "move") actor.moves += 1;
+  actor.enemyPiecesCaptured += capturedEnemyPieceCount(before, after, actorUserId);
+  actor.piecesFinished += piecesFinishedCount(before, after, actorUserId);
+  for (const player of before.players) {
+    performanceFor(context, player.userId).ownPiecesSentToWaiting += ownPiecesSentToWaitingCount(before, after, player.userId);
+  }
+}
+
 function commitTransition(
   context: SimulationContext,
   before: GameEngineState,
@@ -240,6 +291,7 @@ function commitTransition(
     actorUserId,
     detectG01TriggerBreakdown(before, after, actorUserId, context.ownedByUser),
   );
+  recordPerformanceTransition(context, before, after, actorUserId, actionKind);
   context.engine = applyCrossTransitionLegacyRules(before, after, context);
   assertGameStateInvariants(context.engine, {
     ownedByUser: context.ownedByUser,
@@ -275,7 +327,9 @@ function applyRawTransitionWithoutTelemetry(
   label: string,
   event: Readonly<Record<string, unknown>> = {},
 ) {
-  context.engine = canonicalizeRawTransition(context, before, after, actorUserId, actionKind, event);
+  const canonical = canonicalizeRawTransition(context, before, after, actorUserId, actionKind, event);
+  recordPerformanceTransition(context, before, canonical, actorUserId, actionKind);
+  context.engine = canonical;
   assertGameStateInvariants(context.engine, {
     ownedByUser: context.ownedByUser,
     setupsByUser: context.setupsByUser,
@@ -365,9 +419,13 @@ function applyDueAugmentEvents(context: SimulationContext) {
         && forceEligible
         && eventIndex + 1 === (context.forcedAcquisitionIndex ?? 1)
         && player.seat === forcedSeat;
+      const selectionPool = currentlyEligible.length > 0 ? currentlyEligible : visible;
+      const naturalSelectedId = !shouldForce || context.preserveSelectionRng
+        ? context.rng.augment.pick(selectionPool)
+        : null;
       const selectedId = shouldForce
         ? context.forcedAugmentId!
-        : context.rng.augment.pick(currentlyEligible.length > 0 ? currentlyEligible : visible);
+        : naturalSelectedId!;
 
       const acquiredId = selectedId === "AUG-048" || selectedId === "AUG-049"
         ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
@@ -1148,8 +1206,10 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     ruleset: options.ruleset,
     forcedAugmentId: resolveAugmentId(options.forcedAugmentId) ?? options.forcedAugmentId,
     forcedAcquisitionIndex: options.forcedAcquisitionIndex,
+    preserveSelectionRng: Boolean(options.preserveSelectionRng),
     tokenCounter: 0,
     actions: 0,
+    performanceByUser: Object.fromEntries(engine.players.map((player) => [player.userId, { rolls: 0, moves: 0, enemyPiecesCaptured: 0, ownPiecesSentToWaiting: 0, piecesFinished: 0 }])),
     s16BasicRollsByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),
     s16NakByUser: Object.fromEntries(engine.players.map((player) => [player.userId, 0])),
   };
@@ -1180,7 +1240,7 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
   }
 
   if (context.engine.winnerUserId) status = "COMPLETED";
-  else if (!error && maxRounds != null && context.engine.round > maxRounds) status = "DRAW";
+  else if (!error && maxRounds != null && context.engine.round > maxRounds) status = "LONG_GAME";
   else if (!error && context.actions >= maxActions) status = "ACTION_LIMIT";
 
   const winner = context.engine.players.find((player) => player.userId === context.engine.winnerUserId) ?? null;
@@ -1203,11 +1263,12 @@ export function simulateGame(options: SimulationOptions): SimulationGameResult {
     triggerCountsByUser: context.triggerCountsByUser,
     g01TriggerBreakdownByUser: context.g01TriggerBreakdownByUser,
     firstAugmentLeaderCheckpoint: context.firstAugmentLeaderCheckpoint ?? undefined,
+    performanceByUser: structuredClone(context.performanceByUser),
     s16Telemetry: {
       basicRollsByUser: structuredClone(context.s16BasicRollsByUser),
       nakByUser: structuredClone(context.s16NakByUser),
     },
-    failureDiagnostics: status === "STALLED" ? {
+    failureDiagnostics: status === "STALLED" || status === "ACTION_LIMIT" || status === "LONG_GAME" ? {
       engine: structuredClone(context.engine),
       ownedByUser: structuredClone(context.ownedByUser),
       setupsByUser: structuredClone(context.setupsByUser),

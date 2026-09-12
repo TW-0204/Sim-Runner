@@ -35,7 +35,16 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
   const first = results[0];
   const completed = results.filter((result) => result.status === "COMPLETED");
   const draws = results.filter((result) => result.status === "DRAW");
+  const longGames = results.filter((result) => result.status === "LONG_GAME");
   const rounds = completed.map((result) => result.round).sort((a, b) => a - b);
+  const completedBy15Games = completed.filter((result) => result.round <= 15).length;
+  const completed16To20Games = completed.filter((result) => result.round >= 16 && result.round <= 20).length;
+  const completed21To30Games = completed.filter((result) => result.round >= 21 && result.round <= 30).length;
+  const completedAfter30Games = completed.filter((result) => result.round > 30).length;
+  const durationTerminalGames = completed.length + longGames.length;
+  const over15Games = completed.filter((result) => result.round > 15).length + longGames.length;
+  const over20Games = completed.filter((result) => result.round > 20).length + longGames.length;
+  const over30Games = completed.filter((result) => result.round > 30).length + longGames.length;
   const turns = completed.map((result) => result.turnNumber);
   const averageRound = average(rounds);
   const maxAugmentEvents = Math.max(0, ...results.map((result) => result.acquisitions.reduce((max, item) => Math.max(max, item.acquisitionIndex), 0)));
@@ -88,6 +97,25 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
   const leaderWins = uniqueLeaderCheckpoints.filter((result) => result.firstAugmentLeaderCheckpoint?.leaderUserIds[0] === result.winnerUserId).length;
 
   const drawGamesOwnedByAugment = new Map<string, number>();
+  const longGamesOwnedByAugment = new Map<string, number>();
+  const completedOver15OwnedByAugment = new Map<string, number>();
+  const completedOver20OwnedByAugment = new Map<string, number>();
+  const completedOver30OwnedByAugment = new Map<string, number>();
+  const incrementUniqueOwnerAugments = (result: SimulationGameResult, target: Map<string, number>) => {
+    const seen = new Set<string>();
+    for (const acquisition of result.acquisitions) {
+      const key = `${acquisition.userId}\u0000${acquisition.augmentId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      target.set(acquisition.augmentId, (target.get(acquisition.augmentId) ?? 0) + 1);
+    }
+  };
+  for (const result of completed) {
+    if (result.round > 15) incrementUniqueOwnerAugments(result, completedOver15OwnedByAugment);
+    if (result.round > 20) incrementUniqueOwnerAugments(result, completedOver20OwnedByAugment);
+    if (result.round > 30) incrementUniqueOwnerAugments(result, completedOver30OwnedByAugment);
+  }
+  for (const result of longGames) incrementUniqueOwnerAugments(result, longGamesOwnedByAugment);
   for (const result of draws) {
     const seen = new Set<string>();
     for (const acquisition of result.acquisitions) {
@@ -159,7 +187,7 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
     }
   }
 
-  for (const augmentId of drawGamesOwnedByAugment.keys()) {
+  for (const augmentId of new Set([...drawGamesOwnedByAugment.keys(), ...longGamesOwnedByAugment.keys()])) {
     if (byAugment.has(augmentId)) continue;
     byAugment.set(augmentId, {
       gamesOwned: 0,
@@ -182,13 +210,25 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
     const thirdIndex = stats.byIndex.get(3) ?? { games: 0, wins: 0 };
     const averageGameRound = stats.gamesOwned ? stats.totalGameRounds / stats.gamesOwned : null;
     const drawGamesOwned = drawGamesOwnedByAugment.get(augmentId) ?? 0;
-    const terminalGamesOwned = stats.gamesOwned + drawGamesOwned;
+    const longGameGamesOwned = longGamesOwnedByAugment.get(augmentId) ?? 0;
+    const completedOver15GamesOwned = completedOver15OwnedByAugment.get(augmentId) ?? 0;
+    const completedOver20GamesOwned = completedOver20OwnedByAugment.get(augmentId) ?? 0;
+    const completedOver30GamesOwned = completedOver30OwnedByAugment.get(augmentId) ?? 0;
+    const terminalGamesOwned = stats.gamesOwned + drawGamesOwned + longGameGamesOwned;
     augmentWinStats[augmentId] = {
       gamesOwned: stats.gamesOwned,
       wins: stats.wins,
       winRate: rate(stats.wins, stats.gamesOwned),
       drawGamesOwned,
       drawRate: rate(drawGamesOwned, terminalGamesOwned),
+      longGameGamesOwned,
+      longGameRate: rate(longGameGamesOwned, terminalGamesOwned),
+      completedOver15GamesOwned,
+      completedOver20GamesOwned,
+      completedOver30GamesOwned,
+      over15Rate: rate(completedOver15GamesOwned + longGameGamesOwned, terminalGamesOwned),
+      over20Rate: rate(completedOver20GamesOwned + longGameGamesOwned, terminalGamesOwned),
+      over30Rate: rate(completedOver30GamesOwned + longGameGamesOwned, terminalGamesOwned),
       specialWins: stats.specialWins,
       specialWinShareOfWins: stats.wins ? stats.specialWins / stats.wins : null,
       triggeredGames: stats.triggeredGames,
@@ -233,8 +273,19 @@ export function summarizeBatch(results: SimulationGameResult[]): BatchSummary {
     games: results.length,
     completedGames: completed.length,
     drawGames: draws.length,
+    longGameGames: longGames.length,
     stalledGames: results.filter((result) => result.status === "STALLED").length,
     actionLimitGames: results.filter((result) => result.status === "ACTION_LIMIT").length,
+    durationBands: {
+      completedBy15Games,
+      completed16To20Games,
+      completed21To30Games,
+      completedAfter30Games,
+      roundLimitGames: longGames.length,
+      over15Rate: rate(over15Games, durationTerminalGames),
+      over20Rate: rate(over20Games, durationTerminalGames),
+      over30Rate: rate(over30Games, durationTerminalGames),
+    },
     averageRound,
     medianRound: percentile(rounds, 0.5),
     p90Round: percentile(rounds, 0.9),
