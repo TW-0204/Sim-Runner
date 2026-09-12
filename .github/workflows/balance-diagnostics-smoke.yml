@@ -1,11 +1,6 @@
 name: Balance Diagnostics Smoke
 
 on:
-  push:
-    branches:
-      - balance/diagnostics-v1
-    paths:
-      - '.github/workflows/balance-diagnostics-smoke.yml'
   workflow_dispatch:
 
 permissions:
