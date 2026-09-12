@@ -114,24 +114,29 @@ Important limitation: the current simulation bot selects `MO` whenever it uses G
 
 ### AUG-017 개판
 
-The rework removes the old per-turn extra-roll cap and two-piece stack limit. GAE rolls are counted across the whole game, including rolls before acquisition. The unlock-th GAE only unlocks the augment; only later GAE rolls grant extra rolls. After unlock, YUT/MO no longer grant their normal face extra roll while GAE can grant extra rolls without a per-turn cap.
+The earlier Gaepan threshold evidence that counted GAE rolls from the start of the game is superseded and must not be used as final balance evidence. That includes the old `6/7/8` player-count recommendation.
 
-A single shared unlock threshold did not balance player counts well:
+The corrected candidate starts the GAE counter when AUG-017 is acquired. GAE rolls before acquisition are ignored. Before unlock, YUT/MO keep their normal extra-roll behavior. The GAE that reaches the unlock threshold only unlocks the augment and does not grant an extra roll. After unlock, each later GAE grants one extra roll without a per-turn cap, while YUT/MO stop granting their normal face extra rolls. The legacy maximum-two stack restriction is also removed for this candidate.
 
-- 6: weak in 2P but strongly positive in 3P/4P.
-- 7: improved 3P/4P but remained weak in 2P.
-- 8: approximately neutral in 3P/4P but too weak in 2P.
+With the corrected acquisition-scoped counter, the originally screened low thresholds were too strong. At first acquisition, threshold 6 produced paired win deltas of +10.2%p at 2P, +20.6%p at 3P, and +23.0%p at 4P. Second-acquisition thresholds 3/4/5 were also strongly positive, with threshold 5 still producing +4.6%p, +9.2%p, and +12.0%p at 2P/3P/4P.
 
-Player-count-scaled thresholds were therefore screened. `5/7/8` at 300 valid pairs per context produced:
+A wider threshold sweep therefore tested substantially higher unlock counts. The stable candidate from that sweep is:
 
-| Acquisition slot | 2P | 3P | 4P |
-| --- | ---: | ---: | ---: |
-| first | -3.67%p | +0.67%p | -2.67%p |
-| second | +5.67%p | +6.67%p | +1.00%p |
+- first acquisition: unlock after 14 post-acquisition GAE rolls,
+- second acquisition: unlock after 10 post-acquisition GAE rolls.
 
-For comparison, `5/7/7` produced +6.33%p in 4P first acquisition and +9.33%p in 4P second acquisition, so an 8-GAE 4P threshold is more stable.
+A 500-valid-pair confirmation per player count produced:
 
-The leading design recommendation is `6/7/8` for 2P/3P/4P respectively. This starts from the originally proposed six-GAE unlock and raises only the multiplayer thresholds where the unlimited post-unlock chain is more valuable. The recommendation combines independently tested player-count slices: 2P threshold 6, 3P threshold 7, and 4P threshold 8. It has not yet been written into canonical rules.
+| Acquisition slot | Threshold | Players | Paired win delta | Unlock rate | Avg unlock round | Extra rolls/game | Extra rolls when unlocked |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| first | 14 | 2P | -3.0%p | 15.8% | 17.29 | 0.42 | 2.65 |
+| first | 14 | 3P | +4.6%p | 28.2% | 14.13 | 1.37 | 4.85 |
+| first | 14 | 4P | +3.6%p | 43.2% | 13.59 | 2.47 | 5.73 |
+| second | 10 | 2P | -4.0%p | 15.6% | 16.95 | 0.40 | 2.59 |
+| second | 10 | 3P | -0.6%p | 30.8% | 14.35 | 1.32 | 4.29 |
+| second | 10 | 4P | +0.6%p | 43.2% | 13.84 | 1.97 | 4.56 |
+
+The current balance candidate is therefore `14` for first acquisition and `10` for second acquisition. It keeps the high-impact post-unlock identity while reducing the previous multiplayer win-rate spike. The main tradeoff is a low unlock rate in 2P, around 16%, so this remains a candidate rather than a canonical rule until the design accepts that rarity.
 
 ## Running a future augment diagnosis
 
