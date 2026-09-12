@@ -90,6 +90,49 @@ The report compares:
 - pieces finished,
 - average game round.
 
+## 2026-09-12 candidate tuning snapshot
+
+These are experiment results only. None of the candidate mechanics in this section are part of the canonical game rules yet.
+
+### AUG-044 신의 손
+
+The original repeating recharge mechanic was strongly positive in paired tests, around +18 to +22.5 percentage points depending on player count.
+
+A finite-use rework was tested where acquisition grants a fixed number of upcoming basic-roll overrides and no later recharge occurs. Extra rolls do not consume the finite uses because only basic rolls invoke the override.
+
+Initial 200-pair first-acquisition results:
+
+| Finite basic-roll uses | 2P | 3P | 4P |
+| ---: | ---: | ---: | ---: |
+| 1 | -5.0%p | -6.0%p | +0.0%p |
+| 2 | +4.0%p | -1.5%p | -0.5%p |
+| 3 | +6.0%p | +6.5%p | +7.5%p |
+
+The 3-use candidate was repeated at 500 valid pairs per player count and produced +11.0%p at 2P, +7.0%p at 3P, and +7.0%p at 4P. This is the leading finite-use candidate from the current bot baseline.
+
+Important limitation: the current simulation bot selects `MO` whenever it uses God Hand. A human can choose DO, GAE, GEOL, YUT, or MO situationally. The finite-use result should therefore be treated as a strong screening result, not the final ceiling of optimal human play.
+
+### AUG-017 개판
+
+The rework removes the old per-turn extra-roll cap and two-piece stack limit. GAE rolls are counted across the whole game, including rolls before acquisition. The unlock-th GAE only unlocks the augment; only later GAE rolls grant extra rolls. After unlock, YUT/MO no longer grant their normal face extra roll while GAE can grant extra rolls without a per-turn cap.
+
+A single shared unlock threshold did not balance player counts well:
+
+- 6: weak in 2P but strongly positive in 3P/4P.
+- 7: improved 3P/4P but remained weak in 2P.
+- 8: approximately neutral in 3P/4P but too weak in 2P.
+
+Player-count-scaled thresholds were therefore screened. `5/7/8` at 300 valid pairs per context produced:
+
+| Acquisition slot | 2P | 3P | 4P |
+| --- | ---: | ---: | ---: |
+| first | -3.67%p | +0.67%p | -2.67%p |
+| second | +5.67%p | +6.67%p | +1.00%p |
+
+For comparison, `5/7/7` produced +6.33%p in 4P first acquisition and +9.33%p in 4P second acquisition, so an 8-GAE 4P threshold is more stable.
+
+The leading design recommendation is `6/7/8` for 2P/3P/4P respectively. This starts from the originally proposed six-GAE unlock and raises only the multiplayer thresholds where the unlimited post-unlock chain is more valuable. The recommendation combines independently tested player-count slices: 2P threshold 6, 3P threshold 7, and 4P threshold 8. It has not yet been written into canonical rules.
+
 ## Running a future augment diagnosis
 
 Update `diagnostics/augment-request.json` with a canonical `AUG-###` ID, sample count, and max round cap. The `Augment Cause Diagnostic` workflow runs automatically on that request change and stores JSON and Markdown artifacts.
