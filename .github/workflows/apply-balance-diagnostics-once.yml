@@ -1,6 +1,11 @@
 name: Apply Balance Diagnostics Once
 
 on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/apply-balance-diagnostics-once.yml'
   workflow_dispatch:
 
 permissions:
