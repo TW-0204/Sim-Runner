@@ -10,14 +10,16 @@ Simulation outcomes are intentionally separated so a round cap is not reported a
 - `STALLED`: simulation or game progression raised an error and could not continue.
 - `ACTION_LIMIT`: the action safety cap was reached.
 
-For balance review, use these duration bands in addition to win rate:
+For balance review, use these duration bands as descriptive diagnostics, not as target game lengths:
 
-- 1-15 rounds: normal target window
-- 16-20 rounds: long
-- 21-30 rounds: very long
-- over 30 rounds: round-cap problem candidate (`LONG_GAME` when the cap is 30)
+- 1-15 rounds: early completion band
+- 16-20 rounds: middle duration band
+- 21-30 rounds: long-tail band
+- over 30 rounds: extended-tail candidate (`LONG_GAME` when the cap is 30)
 
-`LONG_GAME`, `STALLED`, and `ACTION_LIMIT` are all problem-game signals, but they must remain separate because their causes are different.
+Do not classify a game as unhealthy merely because it exceeds 15 rounds. In a no-augment control audit, average game length was 16.75 rounds at 2 players, 17.84 at 3 players, and 18.26 at 4 players. The corresponding augment-enabled baseline was approximately 14.6-14.7 rounds. The bands are therefore for comparison and tail diagnosis, not a pass/fail balance target.
+
+`LONG_GAME`, `STALLED`, and `ACTION_LIMIT` are all problem-game signals, but they must remain separate because their causes are different. A `LONG_GAME` is not automatically an engine failure: extended-cap reruns must determine whether it eventually completes normally.
 
 ## Long-game audit
 
@@ -26,6 +28,8 @@ For balance review, use these duration bands in addition to win rate:
 1. a game that simply ends somewhat late,
 2. a severe long game,
 3. an actual progression/stall problem.
+
+The 90,000-game extended audit found 750 games over 30 rounds (0.83%). All 750 completed by the 100-round extended cap. Treat this as a long-tail reference, not evidence of a progression deadlock.
 
 `scripts/long-game-merge.ts` merges independent batches and ranks augments by association with long games. Association is diagnostic evidence, not proof that the augment caused the long game.
 
@@ -48,7 +52,7 @@ The report compares:
 
 - owner win rate versus the same seat in control,
 - paired win gains and losses,
-- 15/20-round long-game rates,
+- 15/20-round duration-band rates,
 - target trigger count and win rate by trigger bucket,
 - captures,
 - pieces lost back to waiting,
