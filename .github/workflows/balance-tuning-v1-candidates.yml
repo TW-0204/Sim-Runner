@@ -19,17 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: 'baseline-chaser', augment: 'AUG-025', patch: 'baseline' }
-          - { label: 'chaser-normal-extra', augment: 'AUG-025', patch: 'chaser-normal-extra' }
-          - { label: 'baseline-hunt', augment: 'AUG-042', patch: 'baseline' }
-          - { label: 'hunt-7-12-16', augment: 'AUG-042', patch: 'hunt-7-12-16' }
-          - { label: 'hunt-7-14-20', augment: 'AUG-042', patch: 'hunt-7-14-20' }
-          - { label: 'hunt-7-16-24', augment: 'AUG-042', patch: 'hunt-7-16-24' }
+          - { label: 'baseline-gaepan', augment: 'AUG-017', patch: 'baseline' }
+          - { label: 'gaepan-unlock-6', augment: 'AUG-017', patch: 'gaepan-unlock-6' }
+          - { label: 'gaepan-unlock-7', augment: 'AUG-017', patch: 'gaepan-unlock-7' }
+          - { label: 'gaepan-unlock-8', augment: 'AUG-017', patch: 'gaepan-unlock-8' }
           - { label: 'baseline-godhand', augment: 'AUG-044', patch: 'baseline' }
-          - { label: 'godhand-3', augment: 'AUG-044', patch: 'godhand-3' }
-          - { label: 'godhand-4', augment: 'AUG-044', patch: 'godhand-4' }
-          - { label: 'baseline-betrayal', augment: 'AUG-053', patch: 'baseline' }
-          - { label: 'betrayal-obligation', augment: 'AUG-053', patch: 'betrayal-obligation' }
+          - { label: 'godhand-next-1', augment: 'AUG-044', patch: 'godhand-next-1' }
+          - { label: 'godhand-next-2', augment: 'AUG-044', patch: 'godhand-next-2' }
+          - { label: 'godhand-next-3', augment: 'AUG-044', patch: 'godhand-next-3' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,6 +40,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import os
+          import re
 
           patch = os.environ['PATCH']
 
@@ -54,35 +52,65 @@ jobs:
                   raise SystemExit(f'{path}: expected exactly one match for {patch}, found {count}')
               p.write_text(s.replace(old, new))
 
-          if patch == 'chaser-normal-extra':
-              replace_once(
-                  'src/lib/game/engine.ts',
-                  '  if (usedChaseAbility) captures.captureExtraRollCount = 0;\n',
-                  '',
+          if patch.startswith('godhand-next-'):
+              uses = int(patch.removeprefix('godhand-next-'))
+              p = Path('src/lib/game/roll-flow.ts')
+              s = p.read_text()
+
+              old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, "AUG-044")) return 0;\n  return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;\n}'''
+              new_charge = f'''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {{\n  if (!has(ownedIds, "AUG-044")) return 0;\n  const runtime = runtimeFor(engine, userId);\n  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};\n  return runtime.godHandCharges;\n}}'''
+              if s.count(old_charge) != 1:
+                  raise SystemExit('godHandChargeCount shape changed')
+              s = s.replace(old_charge, new_charge)
+
+              s, count = re.subn(
+                  r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
+                  '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  // Finite-use God Hand does not recharge from later basic rolls.\n  if (!has(ownedIds, "AUG-044")) return;\n}\n\nfunction canUseDoReroll''',
+                  s,
+                  count=1,
+                  flags=re.S,
               )
-          elif patch.startswith('hunt-'):
-              values = tuple(int(v) for v in patch.removeprefix('hunt-').split('-'))
-              if len(values) != 3:
-                  raise SystemExit('hunt candidate requires 2P/3P/4P targets')
-              old = '''export function huntCaptureTarget(playerCount: number) {\n  if (playerCount === 2) return 7;\n  if (playerCount === 3) return 19;\n  if (playerCount === 4) return 30;\n  return 30;\n}'''
-              new = f'''export function huntCaptureTarget(playerCount: number) {{\n  if (playerCount === 2) return {values[0]};\n  if (playerCount === 3) return {values[1]};\n  if (playerCount === 4) return {values[2]};\n  return {values[2]};\n}}'''
-              replace_once('src/lib/augments/effects.ts', old, new)
-          elif patch.startswith('godhand-'):
-              threshold = int(patch.removeprefix('godhand-'))
-              replace_once(
-                  'src/lib/game/roll-flow.ts',
-                  '  if (runtime.godHandBasicProgress >= 2) {\n',
-                  f'  if (runtime.godHandBasicProgress >= {threshold}) {{\n',
-              )
-          elif patch == 'betrayal-obligation':
-              old = '''  const player = currentPlayer(engine);\n  if (player.pieces.every((piece) => piece.status === "FINISHED")) {\n    declareWinner(engine, player.userId, "NORMAL", `${player.displayName} 승리!`);\n    return player.userId;\n  }'''
-              new = '''  const player = currentPlayer(engine);\n  const requiredPieces = allPieces(engine).filter((piece) => (\n    piece.ownerUserId === player.userId\n    || piece.betrayalOriginalOwnerUserId === player.userId\n  ));\n  if (requiredPieces.length >= 4 && requiredPieces.every((piece) => piece.status === "FINISHED")) {\n    declareWinner(engine, player.userId, "NORMAL", `${player.displayName} 승리!`);\n    return player.userId;\n  }'''
-              replace_once('src/lib/game/engine.ts', old, new)
+              if count != 1:
+                  raise SystemExit('recordGodHandBasicRoll shape changed')
+
+              old_spend = '''  runtime.godHandCharges ??= 0;\n  runtime.godHandBasicProgress ??= 0;\n  if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");\n  runtime.godHandCharges -= 1;\n  runtime.godHandBasicProgress = 0;\n  runtime.godHandSkipNextBasicProgress = true;'''
+              new_spend = f'''  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};\n  if (runtime.godHandCharges < 1) throw new Error("신의 손 사용 횟수가 없습니다.");\n  runtime.godHandCharges -= 1;'''
+              if s.count(old_spend) != 1:
+                  raise SystemExit('God Hand spend block shape changed')
+              s = s.replace(old_spend, new_spend)
+              p.write_text(s)
+
+          elif patch.startswith('gaepan-unlock-'):
+              threshold = int(patch.removeprefix('gaepan-unlock-'))
+              p = Path('src/lib/augments/effects.ts')
+              s = p.read_text()
+              pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
+              replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{\n  if (has(ownedIds, "AUG-017")) return face === "GAE";\n  return face === "YUT" || face === "MO";\n}}\n\nexport function canGrantFaceExtraRoll(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";\n  if (face !== "GAE") return false;\n  const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;\n  return countBeforeThisRoll + 1 > {threshold};\n}}\n\nexport function consumeFaceExtraRollGrant(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  const grant = canGrantFaceExtraRoll(engine, userId, face, ownedIds);\n  const runtime = runtimeForPlayer(engine, userId);\n  if (face === "GAE") runtime.g01GameGaeCount = (runtime.g01GameGaeCount ?? 0) + 1;\n  return grant;\n}}\n\nexport function armA04OnAcquisition'''
+              s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit('G01 face-extra block shape changed')
+              p.write_text(s)
+
+              p = Path('src/lib/game/types.ts')
+              s = p.read_text()
+              marker = '  g01ExtraRollsGranted?: number;\n'
+              if marker not in s:
+                  raise SystemExit('G01 runtime type marker missing')
+              s = s.replace(marker, marker + '  g01GameGaeCount?: number;\n', 1)
+              p.write_text(s)
+
+              p = Path('src/lib/game/engine.ts')
+              s = p.read_text()
+              count = s.count('if (ownedIds.includes("AUG-017")) {')
+              if count != 3:
+                  raise SystemExit(f'expected 3 G01 stack-limit guards, found {count}')
+              s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
+              p.write_text(s)
           else:
               raise SystemExit(f'unknown patch: {patch}')
           PY
           git diff --check
-          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/roll-flow.ts
+          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/roll-flow.ts src/lib/game/types.ts
       - name: Run paired candidate diagnostic
         run: |
           OUT="tuning-results/${{ matrix.label }}"
@@ -113,10 +141,8 @@ jobs:
           const fs = require('fs');
           const path = require('path');
           const groups = {
-            'AUG-025': ['baseline-chaser','chaser-normal-extra'],
-            'AUG-042': ['baseline-hunt','hunt-7-12-16','hunt-7-14-20','hunt-7-16-24'],
-            'AUG-044': ['baseline-godhand','godhand-3','godhand-4'],
-            'AUG-053': ['baseline-betrayal','betrayal-obligation'],
+            'AUG-017': ['baseline-gaepan','gaepan-unlock-6','gaepan-unlock-7','gaepan-unlock-8'],
+            'AUG-044': ['baseline-godhand','godhand-next-1','godhand-next-2','godhand-next-3'],
           };
           const rows = [];
           for (const [augment, labels] of Object.entries(groups)) {
@@ -136,6 +162,7 @@ jobs:
                   treatmentAverageRound: r.treatmentAverageRound,
                   controlAverageRound: r.controlAverageRound,
                   triggerRate: r.triggerRate,
+                  averageTriggers: r.averageTriggers,
                   performanceDelta: r.performanceDelta,
                 });
               }
