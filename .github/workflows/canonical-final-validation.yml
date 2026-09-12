@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/canonical-v11
+      - refactor/augment-id-v2
     paths:
       - '.github/workflows/canonical-final-validation.yml'
   workflow_dispatch:
