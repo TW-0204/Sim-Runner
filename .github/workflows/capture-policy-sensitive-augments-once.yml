@@ -1,0 +1,131 @@
+name: Capture Policy Sensitive Augments Once
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/capture-policy-sensitive-augments-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        policy: [current, player-scaled-capture]
+        augment: [AUG-025, AUG-042, AUG-044, AUG-053]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply diagnostic bot policy
+        if: matrix.policy == 'player-scaled-capture'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/simulation/game.ts')
+          s = p.read_text()
+          old = 'return base + capturedEnemyPieceCount(before, after, userId) * 85;'
+          new = 'return base + capturedEnemyPieceCount(before, after, userId) * (85 / Math.max(1, context.engine.players.length - 1));'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one capture utility expression, found {s.count(old)}')
+          p.write_text(s.replace(old, new))
+          PY
+          git diff --check
+          git diff -- src/lib/simulation/game.ts
+      - name: Run paired augment diagnostic
+        run: |
+          OUT="capture-policy-results/${{ matrix.policy }}/${{ matrix.augment }}"
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
+            --augment "${{ matrix.augment }}" \
+            --games 400 \
+            --max-rounds 60 \
+            --output-dir "$OUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-policy-${{ matrix.policy }}-${{ matrix.augment }}
+          path: capture-policy-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    needs: diagnostic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: capture-policy-*
+          path: all-results
+          merge-multiple: true
+      - name: Compare policies
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const augments = ['AUG-025','AUG-042','AUG-044','AUG-053'];
+          const policies = ['current','player-scaled-capture'];
+          const read = (policy, augment) => {
+            const p = path.join('all-results', policy, augment, `diagnostic-${augment}.json`);
+            return JSON.parse(fs.readFileSync(p, 'utf8'));
+          };
+          const summary = [];
+          for (const augment of augments) {
+            const current = read('current', augment);
+            const scaled = read('player-scaled-capture', augment);
+            const key = r => `${r.acquisitionIndex}:${r.playerCount}`;
+            const scaledByKey = new Map(scaled.reports.map(r => [key(r), r]));
+            for (const c of current.reports) {
+              const s = scaledByKey.get(key(c));
+              summary.push({
+                augment,
+                name: current.name,
+                slot: c.acquisitionIndex,
+                players: c.playerCount,
+                currentPairedDeltaPp: c.pairedWinDeltaPp,
+                scaledPairedDeltaPp: s.pairedWinDeltaPp,
+                deltaShiftPp: s.pairedWinDeltaPp - c.pairedWinDeltaPp,
+                currentTreatmentWinRate: c.treatmentWinRate,
+                scaledTreatmentWinRate: s.treatmentWinRate,
+                currentControlWinRate: c.controlWinRate,
+                scaledControlWinRate: s.controlWinRate,
+                treatmentRoundShift: s.treatmentAverageRound - c.treatmentAverageRound,
+                controlRoundShift: s.controlAverageRound - c.controlAverageRound,
+                currentCaptureDelta: c.performanceDelta.enemyPiecesCaptured,
+                scaledCaptureDelta: s.performanceDelta.enemyPiecesCaptured,
+              });
+            }
+          }
+          fs.writeFileSync('capture-policy-summary.json', JSON.stringify(summary, null, 2));
+          console.log('| Augment | Slot | P | Current Δ | Scaled Δ | Shift | T win current→scaled | C win current→scaled | T round shift | C round shift |');
+          console.log('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+          for (const r of summary) {
+            const pp = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%p`;
+            const pct = n => `${(n*100).toFixed(2)}%`;
+            console.log(`| ${r.augment} ${r.name} | ${r.slot} | ${r.players} | ${pp(r.currentPairedDeltaPp)} | ${pp(r.scaledPairedDeltaPp)} | ${pp(r.deltaShiftPp)} | ${pct(r.currentTreatmentWinRate)}→${pct(r.scaledTreatmentWinRate)} | ${pct(r.currentControlWinRate)}→${pct(r.scaledControlWinRate)} | ${r.treatmentRoundShift.toFixed(2)} | ${r.controlRoundShift.toFixed(2)} |`);
+          }
+          const twoPlayerMismatch = summary.filter(r => r.players === 2 && (
+            Math.abs(r.currentPairedDeltaPp-r.scaledPairedDeltaPp) > 1e-12 ||
+            Math.abs(r.currentTreatmentWinRate-r.scaledTreatmentWinRate) > 1e-12 ||
+            Math.abs(r.currentControlWinRate-r.scaledControlWinRate) > 1e-12
+          ));
+          if (twoPlayerMismatch.length) {
+            console.error('2P sanity mismatch: scaled policy should equal current policy because divisor is 1.');
+            console.error(JSON.stringify(twoPlayerMismatch, null, 2));
+            process.exitCode = 1;
+          } else {
+            console.log('2P sanity: exact match across all compared contexts.');
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-policy-comparison
+          path: capture-policy-summary.json
+          if-no-files-found: error
+          retention-days: 14
