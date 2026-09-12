@@ -1,0 +1,38 @@
+name: Simulation Order Purity Once
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/simulation-order-purity-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pure-single-pass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Run 2P batch 3 without interleaved extended reruns
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/balance-independent-batch.ts
+          --ruleset two-aug-start-r4-special-slots-v2
+          --player-count 2
+          --batch-id purity
+          --seed-start 812000
+          --games 6000
+          --max-rounds 30
+          --output-dir purity-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulation-order-purity
+          path: purity-results/
+          if-no-files-found: error
+          retention-days: 7
