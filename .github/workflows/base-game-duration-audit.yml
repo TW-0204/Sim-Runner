@@ -1,0 +1,40 @@
+name: Base Game Duration Audit
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/base-game-duration-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: No-augment 2P
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/base-game-duration-audit.ts
+          --player-count 2 --games 2000 --seed-start 1900000 --output-dir base-game-results
+      - name: No-augment 3P
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/base-game-duration-audit.ts
+          --player-count 3 --games 2000 --seed-start 2000000 --output-dir base-game-results
+      - name: No-augment 4P
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/base-game-duration-audit.ts
+          --player-count 4 --games 2000 --seed-start 2100000 --output-dir base-game-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: base-game-duration-summary
+          path: base-game-results/
+          if-no-files-found: error
+          retention-days: 7
