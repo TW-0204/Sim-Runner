@@ -5,7 +5,7 @@ import type { SpecialOfferShown } from "./special-offers";
 import type { TriggerCountsByUser } from "./triggers";
 import type { FirstAugmentLeaderCheckpoint, G01TriggerBreakdownByUser } from "./telemetry";
 
-export const BALANCE_BOT_VERSION = "balance-bot-v0.2.1";
+export const BALANCE_BOT_VERSION = "balance-bot-v0.3.0";
 
 export type AugmentAcquisition = {
   userId: string;
@@ -17,12 +17,20 @@ export type AugmentAcquisition = {
   tier: "silver" | "gold" | "prism";
 };
 
-export type SimulationStatus = "COMPLETED" | "DRAW" | "STALLED" | "ACTION_LIMIT";
+export type SimulationStatus = "COMPLETED" | "DRAW" | "LONG_GAME" | "STALLED" | "ACTION_LIMIT";
 
 export type SimulationFailureDiagnostics = {
   engine: GameEngineState;
   ownedByUser: Record<string, string[]>;
   setupsByUser: Record<string, PlayerAugmentSetups>;
+};
+
+export type PlayerPerformanceTelemetry = {
+  rolls: number;
+  moves: number;
+  enemyPiecesCaptured: number;
+  ownPiecesSentToWaiting: number;
+  piecesFinished: number;
 };
 
 export type SimulationGameResult = {
@@ -44,6 +52,7 @@ export type SimulationGameResult = {
   triggerCountsByUser?: TriggerCountsByUser;
   g01TriggerBreakdownByUser?: G01TriggerBreakdownByUser;
   firstAugmentLeaderCheckpoint?: FirstAugmentLeaderCheckpoint;
+  performanceByUser?: Record<string, PlayerPerformanceTelemetry>;
   s16Telemetry?: {
     basicRollsByUser: Record<string, number>;
     nakByUser: Record<string, number>;
@@ -59,14 +68,27 @@ export type AugmentWindowSummary = {
   averageTurnsRemaining: number | null;
 };
 
+export type DurationBandSummary = {
+  completedBy15Games: number;
+  completed16To20Games: number;
+  completed21To30Games: number;
+  completedAfter30Games: number;
+  roundLimitGames: number;
+  over15Rate: number;
+  over20Rate: number;
+  over30Rate: number;
+};
+
 export type BatchSummary = {
   rulesetId: BalanceRuleset["id"];
   playerCount: number;
   games: number;
   completedGames: number;
   drawGames: number;
+  longGameGames: number;
   stalledGames: number;
   actionLimitGames: number;
+  durationBands: DurationBandSummary;
   averageRound: number | null;
   medianRound: number | null;
   p90Round: number | null;
@@ -101,6 +123,14 @@ export type BatchSummary = {
     winRate: number;
     drawGamesOwned: number;
     drawRate: number;
+    longGameGamesOwned: number;
+    longGameRate: number;
+    completedOver15GamesOwned: number;
+    completedOver20GamesOwned: number;
+    completedOver30GamesOwned: number;
+    over15Rate: number;
+    over20Rate: number;
+    over30Rate: number;
     specialWins: number;
     specialWinShareOfWins: number | null;
     triggeredGames: number;
