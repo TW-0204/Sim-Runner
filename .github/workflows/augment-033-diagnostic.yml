@@ -1,9 +1,9 @@
-name: P04 Bottleneck Diagnostic
+name: AUG-033 Bottleneck Diagnostic
 
 on:
   push:
     paths:
-      - '.github/workflows/p04-diagnostic.yml'
+      - '.github/workflows/augment-033-diagnostic.yml'
   workflow_dispatch:
 
 permissions:
@@ -22,5 +22,5 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: Run P04 diagnostic
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/p04-diagnostic-run.ts --games 1000
+      - name: Run AUG-033 diagnostic
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-033-diagnostic-run.ts --games 1000

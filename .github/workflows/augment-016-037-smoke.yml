@@ -1,15 +1,15 @@
-name: Canonical S16 + P10 Smoke
+name: Canonical AUG-016 + AUG-037 Smoke
 
 on:
   push:
     paths:
-      - '.github/workflows/s16-smoke.yml'
+      - '.github/workflows/augment-016-037-smoke.yml'
       - 'src/lib/augments/**'
       - 'src/lib/game/**'
       - 'src/lib/simulation/**'
-      - 'scripts/run-s16-p10-smoke.sh'
-      - 'scripts/s16-precision-run.ts'
-      - 'scripts/p10-overpass-probe.ts'
+      - 'scripts/run-augment-016-037-smoke.sh'
+      - 'scripts/augment-016-precision-run.ts'
+      - 'scripts/augment-037-overpass-probe.ts'
       - 'scripts/stall-fixes-v10-probe.ts'
       - 'scripts/balance-rework-v3-probe.ts'
   workflow_dispatch:
@@ -26,5 +26,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run canonical S16 + P10 smoke
-        run: bash scripts/run-s16-p10-smoke.sh
+      - name: Run canonical AUG-016 + AUG-037 smoke
+        run: bash scripts/run-augment-016-037-smoke.sh

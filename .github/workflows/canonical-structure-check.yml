@@ -50,8 +50,31 @@ jobs:
             exit 1
           fi
 
+      - name: Verify augment ID lifecycle
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-id-integrity-check.ts
+
+      - name: Reject active legacy-style augment IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E '\b(S|G|P|A)[0-9]{2}\b' src scripts .github/workflows --exclude=legacy-id-map.ts --exclude-dir=archive; then
+            echo 'Legacy-style augment ID found outside the compatibility map/archive.' >&2
+            exit 1
+          fi
+
+      - name: Reject legacy-style active filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          legacy_files=$(find scripts .github/workflows -type f | grep -E '/(s|g|p|a)[0-9]{2}([._-]|$)' || true)
+          if [ -n "$legacy_files" ]; then
+            echo "$legacy_files" >&2
+            echo 'Legacy-style augment filename found in active paths.' >&2
+            exit 1
+          fi
+
       - name: Verify augment runtime registry coverage
         run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-runtime-registry-check.ts
 
       - name: Run canonical smoke
-        run: bash scripts/run-s16-p10-smoke.sh
+        run: bash scripts/run-augment-016-037-smoke.sh

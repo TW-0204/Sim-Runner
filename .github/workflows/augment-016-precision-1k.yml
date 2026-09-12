@@ -1,15 +1,15 @@
-name: S16 Nak Precision 1K
+name: AUG-016 Precision 1K
 
 on:
   push:
     branches:
       - experiment/s16
     paths:
-      - '.github/workflows/s16-precision-1k.yml'
+      - '.github/workflows/augment-016-precision-1k.yml'
       - 'src/lib/augments/**'
       - 'src/lib/game/**'
       - 'src/lib/simulation/**'
-      - 'scripts/s16-precision-run.ts'
+      - 'scripts/augment-016-precision-run.ts'
   workflow_dispatch:
 
 permissions:
@@ -24,12 +24,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run S16 forced-owner precision
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/s16-precision-run.ts --games 1000 --output-dir precision-results/s16
-      - name: Upload S16 precision results
+      - name: Run AUG-016 forced-owner precision
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-016-precision-run.ts --games 1000 --output-dir precision-results/augment-016
+      - name: Upload AUG-016 precision results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: s16-precision-1k
-          path: precision-results/s16
+          name: augment-016-precision-1k
+          path: precision-results/augment-016
           if-no-files-found: error

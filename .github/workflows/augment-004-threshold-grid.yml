@@ -1,9 +1,9 @@
-name: S04 Threshold Grid
+name: AUG-004 Threshold Grid
 
 on:
   push:
     paths:
-      - '.github/workflows/s04-threshold-grid.yml'
+      - '.github/workflows/augment-004-threshold-grid.yml'
   workflow_dispatch:
 
 permissions:
@@ -23,13 +23,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Run S04 threshold precision
-        run: node --import ./scripts/register-ts-hooks.mjs scripts/s04-threshold-run.ts --threshold "${{ matrix.threshold }}" --games 1000
+      - name: Run AUG-004 threshold precision
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-004-threshold-run.ts --threshold "${{ matrix.threshold }}" --games 1000 --output-dir augment-004-threshold-results
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: s04-threshold-${{ matrix.threshold }}
-          path: s04-threshold-results/
+          name: augment-004-threshold-${{ matrix.threshold }}
+          path: augment-004-threshold-results/
           if-no-files-found: error
           retention-days: 7

@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        augment: [A10, A16, P04, P10, P14, P16, P19]
+        augment: [AUG-053, AUG-059, AUG-033, AUG-037, AUG-041, AUG-042, AUG-044]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
