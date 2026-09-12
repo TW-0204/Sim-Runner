@@ -19,101 +19,231 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: 'gaepan-unlock-5', augment: 'AUG-017', patch: 'gaepan-unlock-5', games: 200 }
-          - { label: 'gaepan-scaled-5-7-7', augment: 'AUG-017', patch: 'gaepan-scaled-5-7-7', games: 300 }
-          - { label: 'gaepan-scaled-5-7-8', augment: 'AUG-017', patch: 'gaepan-scaled-5-7-8', games: 300 }
-          - { label: 'godhand-next-3-confirm', augment: 'AUG-044', patch: 'godhand-next-3', games: 500 }
+          - { label: 'gaepan-slot1-unlock-6', augment: 'AUG-017', slot: 1, threshold: 6, games: 500 }
+          - { label: 'gaepan-slot2-unlock-3', augment: 'AUG-017', slot: 2, threshold: 3, games: 500 }
+          - { label: 'gaepan-slot2-unlock-4', augment: 'AUG-017', slot: 2, threshold: 4, games: 500 }
+          - { label: 'gaepan-slot2-unlock-5', augment: 'AUG-017', slot: 2, threshold: 5, games: 500 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - name: Apply candidate patch inside runner only
+
+      - name: Apply acquisition-scoped Gaepan candidate inside runner only
         env:
-          PATCH: ${{ matrix.patch }}
+          THRESHOLD: ${{ matrix.threshold }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import os
           import re
 
-          patch = os.environ['PATCH']
+          threshold = int(os.environ['THRESHOLD'])
 
-          if patch.startswith('godhand-next-'):
-              uses = int(patch.removeprefix('godhand-next-'))
-              p = Path('src/lib/game/roll-flow.ts')
-              s = p.read_text()
+          # Candidate rule: only GAE rolled after AUG-017 acquisition is counted.
+          # The threshold-reaching GAE unlocks the augment but grants no extra roll.
+          # Every later GAE grants one extra roll; YUT/MO grant none while owned.
+          p = Path('src/lib/augments/effects.ts')
+          s = p.read_text()
+          pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
+          replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{
+            if (has(ownedIds, "AUG-017")) return face === "GAE";
+            return face === "YUT" || face === "MO";
+          }}
 
-              old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  if (!has(ownedIds, "AUG-044")) return 0;\n  return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;\n}'''
-              new_charge = f'''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {{\n  if (!has(ownedIds, "AUG-044")) return 0;\n  const runtime = runtimeFor(engine, userId);\n  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};\n  return runtime.godHandCharges;\n}}'''
-              if s.count(old_charge) != 1:
-                  raise SystemExit('godHandChargeCount shape changed')
-              s = s.replace(old_charge, new_charge)
+          export function canGrantFaceExtraRoll(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {{
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            if (face !== "GAE") return false;
+            const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;
+            return countBeforeThisRoll + 1 > {threshold};
+          }}
 
-              s, count = re.subn(
-                  r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
-                  '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {\n  // Finite-use God Hand does not recharge from later basic rolls.\n  if (!has(ownedIds, "AUG-044")) return;\n}\n\nfunction canUseDoReroll''',
-                  s,
-                  count=1,
-                  flags=re.S,
-              )
-              if count != 1:
-                  raise SystemExit('recordGodHandBasicRoll shape changed')
+          export function consumeFaceExtraRollGrant(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {{
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            if (face !== "GAE") return false;
 
-              old_spend = '''  runtime.godHandCharges ??= 0;\n  runtime.godHandBasicProgress ??= 0;\n  if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");\n  runtime.godHandCharges -= 1;\n  runtime.godHandBasicProgress = 0;\n  runtime.godHandSkipNextBasicProgress = true;'''
-              new_spend = f'''  if (runtime.godHandCharges == null) runtime.godHandCharges = {uses};\n  if (runtime.godHandCharges < 1) throw new Error("신의 손 사용 횟수가 없습니다.");\n  runtime.godHandCharges -= 1;'''
-              if s.count(old_spend) != 1:
-                  raise SystemExit('God Hand spend block shape changed')
-              s = s.replace(old_spend, new_spend)
-              p.write_text(s)
+            const runtime = runtimeForPlayer(engine, userId);
+            const countAfterThisRoll = (runtime.g01GameGaeCount ?? 0) + 1;
+            runtime.g01GameGaeCount = countAfterThisRoll;
 
-          elif patch.startswith('gaepan-unlock-') or patch.startswith('gaepan-scaled-'):
-              if patch.startswith('gaepan-unlock-'):
-                  value = int(patch.removeprefix('gaepan-unlock-'))
-                  threshold_expr = str(value)
-              else:
-                  values = tuple(int(v) for v in patch.removeprefix('gaepan-scaled-').split('-'))
-                  if len(values) != 3:
-                      raise SystemExit('Gaepan scaled candidate requires 2P/3P/4P thresholds')
-                  threshold_expr = f'(engine.players.length === 2 ? {values[0]} : engine.players.length === 3 ? {values[1]} : {values[2]})'
+            if (countAfterThisRoll === {threshold} && runtime.g01UnlockRound == null) {{
+              runtime.g01UnlockRound = engine.round;
+              runtime.g01UnlockTurnNumber = engine.turnNumber;
+            }}
 
-              p = Path('src/lib/augments/effects.ts')
-              s = p.read_text()
-              pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
-              replacement = f'''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {{\n  if (has(ownedIds, "AUG-017")) return face === "GAE";\n  return face === "YUT" || face === "MO";\n}}\n\nexport function canGrantFaceExtraRoll(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";\n  if (face !== "GAE") return false;\n  const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;\n  const unlockAt = {threshold_expr};\n  return countBeforeThisRoll + 1 > unlockAt;\n}}\n\nexport function consumeFaceExtraRollGrant(\n  engine: GameEngineState,\n  userId: string,\n  face: RollFace,\n  ownedIds: string[],\n) {{\n  const grant = canGrantFaceExtraRoll(engine, userId, face, ownedIds);\n  const runtime = runtimeForPlayer(engine, userId);\n  if (face === "GAE") runtime.g01GameGaeCount = (runtime.g01GameGaeCount ?? 0) + 1;\n  return grant;\n}}\n\nexport function armA04OnAcquisition'''
-              s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
-              if count != 1:
-                  raise SystemExit('Gaepan face-extra block shape changed')
-              p.write_text(s)
+            const grant = countAfterThisRoll > {threshold};
+            if (grant) runtime.g01PostUnlockExtraRolls = (runtime.g01PostUnlockExtraRolls ?? 0) + 1;
+            return grant;
+          }}
 
-              p = Path('src/lib/game/types.ts')
-              s = p.read_text()
-              marker = '  g01ExtraRollsGranted?: number;\n'
-              if marker not in s:
-                  raise SystemExit('Gaepan runtime type marker missing')
-              s = s.replace(marker, marker + '  g01GameGaeCount?: number;\n', 1)
-              p.write_text(s)
+          export function armA04OnAcquisition'''
+          s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if count != 1:
+            raise SystemExit('Gaepan face-extra block shape changed')
+          p.write_text(s)
 
-              p = Path('src/lib/game/engine.ts')
-              s = p.read_text()
-              count = s.count('if (ownedIds.includes("AUG-017")) {')
-              if count != 3:
-                  raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {count}')
-              s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
-              p.write_text(s)
-          else:
-              raise SystemExit(f'unknown patch: {patch}')
+          # Candidate-only runtime telemetry.
+          p = Path('src/lib/game/types.ts')
+          s = p.read_text()
+          marker = '  g01ExtraRollsGranted?: number;\n'
+          if marker not in s:
+            raise SystemExit('Gaepan runtime type marker missing')
+          fields = '''  g01GameGaeCount?: number;
+            g01UnlockRound?: number;
+            g01UnlockTurnNumber?: number;
+            g01PostUnlockExtraRolls?: number;
+          '''
+          s = s.replace(marker, marker + fields, 1)
+          p.write_text(s)
+
+          # Remove the legacy maximum-2 stacking restriction for this candidate.
+          p = Path('src/lib/game/engine.ts')
+          s = p.read_text()
+          stack_guards = s.count('if (ownedIds.includes("AUG-017")) {')
+          if stack_guards != 3:
+            raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {stack_guards}')
+          s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
+          p.write_text(s)
+
+          # Expose the direct candidate telemetry from every completed simulation.
+          p = Path('src/lib/simulation/types.ts')
+          s = p.read_text()
+          marker = '  performanceByUser?: Record<string, PlayerPerformanceTelemetry>;\n'
+          if marker not in s:
+            raise SystemExit('Simulation result marker missing')
+          telemetry_type = '''  gaepanCandidateTelemetryByUser?: Record<string, {
+            gaeCount: number;
+            unlockRound: number | null;
+            unlockTurnNumber: number | null;
+            postUnlockExtraRolls: number;
+          }>;
+          '''
+          s = s.replace(marker, marker + telemetry_type, 1)
+          p.write_text(s)
+
+          p = Path('src/lib/simulation/game.ts')
+          s = p.read_text()
+          marker = '    performanceByUser: structuredClone(context.performanceByUser),\n'
+          if marker not in s:
+            raise SystemExit('Simulation return marker missing')
+          telemetry_return = '''    gaepanCandidateTelemetryByUser: Object.fromEntries(context.engine.players.map((candidate) => {
+              const runtime = context.engine.augmentRuntime?.[candidate.userId];
+              return [candidate.userId, {
+                gaeCount: runtime?.g01GameGaeCount ?? 0,
+                unlockRound: runtime?.g01UnlockRound ?? null,
+                unlockTurnNumber: runtime?.g01UnlockTurnNumber ?? null,
+                postUnlockExtraRolls: runtime?.g01PostUnlockExtraRolls ?? 0,
+              }];
+            })),
+          '''
+          s = s.replace(marker, marker + telemetry_return, 1)
+          p.write_text(s)
+
+          # Make the paired diagnostic slot-selectable and report unlock telemetry.
+          p = Path('scripts/augment-diagnostic-run.ts')
+          s = p.read_text()
+          old = '''const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 60);
+          const outputDir = argument("output-dir") ?? "augment-diagnostic-results";'''
+          new = '''const maxRounds = positiveInteger("max-rounds", argument("max-rounds"), 60);
+          const requestedAcquisitionIndex = argument("acquisition-index") == null
+            ? null
+            : positiveInteger("acquisition-index", argument("acquisition-index"), 1);
+          const outputDir = argument("output-dir") ?? "augment-diagnostic-results";'''
+          if old not in s:
+            raise SystemExit('diagnostic arg marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '''const acquisitionIndexes = target.timing === "last" ? [2]
+            : target.timing === "first" || target.timing === "not-last" ? [1]
+            : [1, 2];'''
+          new = '''const defaultAcquisitionIndexes = target.timing === "last" ? [2]
+            : target.timing === "first" || target.timing === "not-last" ? [1]
+            : [1, 2];
+          const acquisitionIndexes = requestedAcquisitionIndex == null
+            ? defaultAcquisitionIndexes
+            : [requestedAcquisitionIndex];'''
+          if old not in s:
+            raise SystemExit('diagnostic acquisition index marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '    let triggerSum = 0;\n'
+          new = '''    let triggerSum = 0;
+              let unlockedGames = 0;
+              let unlockRoundSum = 0;
+              let unlockTurnNumberSum = 0;
+              let postUnlockExtraRollSum = 0;
+          '''
+          if old not in s:
+            raise SystemExit('diagnostic counter marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '''      if (treatmentWon) triggerBuckets[bucket].wins += 1;
+
+                addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);'''
+          new = '''      if (treatmentWon) triggerBuckets[bucket].wins += 1;
+
+                const gaepanTelemetry = (treatment as any).gaepanCandidateTelemetryByUser?.[forcedUserId];
+                if (gaepanTelemetry?.unlockRound != null) {
+                  unlockedGames += 1;
+                  unlockRoundSum += gaepanTelemetry.unlockRound;
+                  unlockTurnNumberSum += gaepanTelemetry.unlockTurnNumber ?? 0;
+                }
+                postUnlockExtraRollSum += gaepanTelemetry?.postUnlockExtraRolls ?? 0;
+
+                addPerf(treatmentPerf, treatment.performanceByUser?.[forcedUserId]);'''
+          if old not in s:
+            raise SystemExit('diagnostic telemetry marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '      averageTriggers: triggerSum / validPairs,\n'
+          new = '''      averageTriggers: triggerSum / validPairs,
+                unlockRate: unlockedGames / validPairs,
+                averageUnlockRound: unlockedGames ? unlockRoundSum / unlockedGames : null,
+                averageUnlockTurnNumber: unlockedGames ? unlockTurnNumberSum / unlockedGames : null,
+                averagePostUnlockExtraRollsPerGame: postUnlockExtraRollSum / validPairs,
+                averagePostUnlockExtraRollsWhenUnlocked: unlockedGames ? postUnlockExtraRollSum / unlockedGames : null,
+          '''
+          if old not in s:
+            raise SystemExit('diagnostic report marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '  "| Slot | Players | Treatment win | Control same-seat win | Paired delta | >15R T/C | >20R T/C | Avg triggers | Capture Δ | Lost-piece Δ | Finish Δ |",\n  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",'
+          new = '  "| Slot | Players | Treatment win | Control same-seat win | Paired delta | Unlock rate | Avg unlock R | Extra rolls/game | Extra rolls/unlocked | >15R T/C | >20R T/C |",\n  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",'
+          if old not in s:
+            raise SystemExit('diagnostic markdown header marker changed')
+          s = s.replace(old, new, 1)
+
+          old = '''    return `| ${r.acquisitionIndex} | ${r.playerCount} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.pairedWinDeltaPp >= 0 ? "+" : ""}${r.pairedWinDeltaPp.toFixed(2)}%p | ${pct(r.treatmentOver15Rate)} / ${pct(r.controlOver15Rate)} | ${pct(r.treatmentOver20Rate)} / ${pct(r.controlOver20Rate)} | ${r.averageTriggers.toFixed(2)} | ${r.performanceDelta.enemyPiecesCaptured.toFixed(2)} | ${r.performanceDelta.ownPiecesSentToWaiting.toFixed(2)} | ${r.performanceDelta.piecesFinished.toFixed(2)} |`;'''
+          new = '''    return `| ${r.acquisitionIndex} | ${r.playerCount} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.pairedWinDeltaPp >= 0 ? "+" : ""}${r.pairedWinDeltaPp.toFixed(2)}%p | ${pct(r.unlockRate)} | ${r.averageUnlockRound == null ? "—" : r.averageUnlockRound.toFixed(2)} | ${r.averagePostUnlockExtraRollsPerGame.toFixed(2)} | ${r.averagePostUnlockExtraRollsWhenUnlocked == null ? "—" : r.averagePostUnlockExtraRollsWhenUnlocked.toFixed(2)} | ${pct(r.treatmentOver15Rate)} / ${pct(r.controlOver15Rate)} | ${pct(r.treatmentOver20Rate)} / ${pct(r.controlOver20Rate)} |`;'''
+          if old not in s:
+            raise SystemExit('diagnostic markdown row marker changed')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
           PY
+
           git diff --check
-          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/roll-flow.ts src/lib/game/types.ts
+          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/types.ts src/lib/simulation/game.ts src/lib/simulation/types.ts scripts/augment-diagnostic-run.ts
+
       - name: Run paired candidate diagnostic
         run: |
           OUT="tuning-results/${{ matrix.label }}"
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
             --augment "${{ matrix.augment }}" \
+            --acquisition-index "${{ matrix.slot }}" \
             --games "${{ matrix.games }}" \
             --max-rounds 60 \
             --output-dir "$OUT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: tuning-${{ matrix.label }}
