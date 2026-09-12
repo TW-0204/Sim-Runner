@@ -1,0 +1,87 @@
+name: Diagnostic Seed Diff Once
+
+on:
+  push:
+    branches:
+      - balance/diagnostics-v1
+    paths:
+      - '.github/workflows/diagnostic-seed-diff-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: base, ref: '0ffdb28b7cdb1182cb6146cbbc98f0ef3a8be866' }
+          - { label: diagnostics, ref: 'c4c063149d698b1685e8164228f5d02cade0409c' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Scan non-completed seeds
+        env:
+          LABEL: ${{ matrix.label }}
+        run: |
+          mkdir -p seed-diff
+          node --import ./scripts/register-ts-hooks.mjs --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const [{ getBalanceRuleset }, { simulateGame }] = await Promise.all([
+            import('@/lib/simulation/rulesets'),
+            import('@/lib/simulation/game'),
+          ]);
+          const ruleset = getBalanceRuleset('two-aug-start-r4-special-slots-v2');
+          const rows = [];
+          for (let seed = 812000; seed <= 817999; seed += 1) {
+            const result = simulateGame({ seed: String(seed), ruleset, playerCount: 2, maxActions: 20000, maxRounds: 30 });
+            if (result.status !== 'COMPLETED') {
+              rows.push({ seed, status: result.status, round: result.round, winnerSeat: result.winnerSeat, acquisitions: result.acquisitions });
+            }
+          }
+          const label = process.env.LABEL;
+          writeFileSync(`seed-diff/${label}.json`, JSON.stringify(rows, null, 2));
+          console.log(`${label}: ${rows.length} non-completed`);
+          console.log(rows.map((row) => row.seed).join(','));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seed-diff-${{ matrix.label }}
+          path: seed-diff/
+          if-no-files-found: error
+          retention-days: 7
+
+  compare:
+    needs: scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: seed-diff-*
+          path: seed-diff
+          merge-multiple: true
+      - name: Compare exact seeds
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const base = JSON.parse(fs.readFileSync('seed-diff/base.json', 'utf8'));
+          const current = JSON.parse(fs.readFileSync('seed-diff/diagnostics.json', 'utf8'));
+          const b = new Map(base.map((row) => [row.seed, row]));
+          const c = new Map(current.map((row) => [row.seed, row]));
+          const onlyBase = [...b.keys()].filter((seed) => !c.has(seed));
+          const onlyCurrent = [...c.keys()].filter((seed) => !b.has(seed));
+          console.log(JSON.stringify({ baseCount: base.length, diagnosticsCount: current.length, onlyBase, onlyCurrent }, null, 2));
+          for (const seed of [...new Set([...onlyBase, ...onlyCurrent])]) {
+            console.log(`SEED ${seed}`);
+            console.log('BASE', JSON.stringify(b.get(seed) ?? null));
+            console.log('CURRENT', JSON.stringify(c.get(seed) ?? null));
+          }
+          NODE
