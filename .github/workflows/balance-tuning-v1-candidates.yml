@@ -1,0 +1,158 @@
+name: Balance Tuning V1 Candidates
+
+on:
+  push:
+    branches:
+      - balance/tuning-v1
+    paths:
+      - '.github/workflows/balance-tuning-v1-candidates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: 'baseline-chaser', augment: 'AUG-025', patch: 'baseline' }
+          - { label: 'chaser-normal-extra', augment: 'AUG-025', patch: 'chaser-normal-extra' }
+          - { label: 'baseline-hunt', augment: 'AUG-042', patch: 'baseline' }
+          - { label: 'hunt-7-12-16', augment: 'AUG-042', patch: 'hunt-7-12-16' }
+          - { label: 'hunt-7-14-20', augment: 'AUG-042', patch: 'hunt-7-14-20' }
+          - { label: 'hunt-7-16-24', augment: 'AUG-042', patch: 'hunt-7-16-24' }
+          - { label: 'baseline-godhand', augment: 'AUG-044', patch: 'baseline' }
+          - { label: 'godhand-3', augment: 'AUG-044', patch: 'godhand-3' }
+          - { label: 'godhand-4', augment: 'AUG-044', patch: 'godhand-4' }
+          - { label: 'baseline-betrayal', augment: 'AUG-053', patch: 'baseline' }
+          - { label: 'betrayal-obligation', augment: 'AUG-053', patch: 'betrayal-obligation' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Apply candidate patch inside runner only
+        if: matrix.patch != 'baseline'
+        env:
+          PATCH: ${{ matrix.patch }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          patch = os.environ['PATCH']
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match for {patch}, found {count}')
+              p.write_text(s.replace(old, new))
+
+          if patch == 'chaser-normal-extra':
+              replace_once(
+                  'src/lib/game/engine.ts',
+                  '  if (usedChaseAbility) captures.captureExtraRollCount = 0;\n',
+                  '',
+              )
+          elif patch.startswith('hunt-'):
+              values = tuple(int(v) for v in patch.removeprefix('hunt-').split('-'))
+              if len(values) != 3:
+                  raise SystemExit('hunt candidate requires 2P/3P/4P targets')
+              old = '''export function huntCaptureTarget(playerCount: number) {\n  if (playerCount === 2) return 7;\n  if (playerCount === 3) return 19;\n  if (playerCount === 4) return 30;\n  return 30;\n}'''
+              new = f'''export function huntCaptureTarget(playerCount: number) {{\n  if (playerCount === 2) return {values[0]};\n  if (playerCount === 3) return {values[1]};\n  if (playerCount === 4) return {values[2]};\n  return {values[2]};\n}}'''
+              replace_once('src/lib/augments/effects.ts', old, new)
+          elif patch.startswith('godhand-'):
+              threshold = int(patch.removeprefix('godhand-'))
+              replace_once(
+                  'src/lib/game/roll-flow.ts',
+                  '  if (runtime.godHandBasicProgress >= 2) {\n',
+                  f'  if (runtime.godHandBasicProgress >= {threshold}) {{\n',
+              )
+          elif patch == 'betrayal-obligation':
+              old = '''  const player = currentPlayer(engine);\n  if (player.pieces.every((piece) => piece.status === "FINISHED")) {\n    declareWinner(engine, player.userId, "NORMAL", `${player.displayName} 승리!`);\n    return player.userId;\n  }'''
+              new = '''  const player = currentPlayer(engine);\n  const requiredPieces = allPieces(engine).filter((piece) => (\n    piece.ownerUserId === player.userId\n    || piece.betrayalOriginalOwnerUserId === player.userId\n  ));\n  if (requiredPieces.length >= 4 && requiredPieces.every((piece) => piece.status === "FINISHED")) {\n    declareWinner(engine, player.userId, "NORMAL", `${player.displayName} 승리!`);\n    return player.userId;\n  }'''
+              replace_once('src/lib/game/engine.ts', old, new)
+          else:
+              raise SystemExit(f'unknown patch: {patch}')
+          PY
+          git diff --check
+          git diff -- src/lib/augments/effects.ts src/lib/game/engine.ts src/lib/game/roll-flow.ts
+      - name: Run paired candidate diagnostic
+        run: |
+          OUT="tuning-results/${{ matrix.label }}"
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts \
+            --augment "${{ matrix.augment }}" \
+            --games 200 \
+            --max-rounds 60 \
+            --output-dir "$OUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tuning-${{ matrix.label }}
+          path: tuning-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    needs: candidate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tuning-*
+          path: tuning-results
+          merge-multiple: true
+      - name: Build comparison table
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const groups = {
+            'AUG-025': ['baseline-chaser','chaser-normal-extra'],
+            'AUG-042': ['baseline-hunt','hunt-7-12-16','hunt-7-14-20','hunt-7-16-24'],
+            'AUG-044': ['baseline-godhand','godhand-3','godhand-4'],
+            'AUG-053': ['baseline-betrayal','betrayal-obligation'],
+          };
+          const rows = [];
+          for (const [augment, labels] of Object.entries(groups)) {
+            for (const label of labels) {
+              const file = path.join('tuning-results', label, `diagnostic-${augment}.json`);
+              const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+              for (const r of report.reports) {
+                rows.push({
+                  augment,
+                  name: report.name,
+                  label,
+                  slot: r.acquisitionIndex,
+                  players: r.playerCount,
+                  pairedDeltaPp: r.pairedWinDeltaPp,
+                  treatmentWinRate: r.treatmentWinRate,
+                  controlWinRate: r.controlWinRate,
+                  treatmentAverageRound: r.treatmentAverageRound,
+                  controlAverageRound: r.controlAverageRound,
+                  triggerRate: r.triggerRate,
+                  performanceDelta: r.performanceDelta,
+                });
+              }
+            }
+          }
+          fs.writeFileSync('tuning-comparison.json', JSON.stringify(rows, null, 2));
+          console.log('| Augment | Candidate | Slot | P | Paired Δ | Treatment win | Control win | Avg round T/C |');
+          console.log('|---|---|---:|---:|---:|---:|---:|---:|');
+          for (const r of rows) {
+            const pp = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%p`;
+            const pct = n => `${(n*100).toFixed(1)}%`;
+            console.log(`| ${r.augment} ${r.name} | ${r.label} | ${r.slot} | ${r.players} | ${pp(r.pairedDeltaPp)} | ${pct(r.treatmentWinRate)} | ${pct(r.controlWinRate)} | ${r.treatmentAverageRound.toFixed(2)}/${r.controlAverageRound.toFixed(2)} |`);
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tuning-v1-comparison
+          path: tuning-comparison.json
+          if-no-files-found: error
+          retention-days: 14
