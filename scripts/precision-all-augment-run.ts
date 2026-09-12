@@ -39,10 +39,12 @@ type Report = {
   discardedContexts: number;
   completedGames: number;
   drawGames: number;
+  longGameGames: number;
   incompleteGames: number;
   wins: number;
   ownerWinRate: number | null;
   drawRate: number | null;
+  longGameRate: number | null;
   baselineWinRate: number;
   deltaPp: number | null;
   specialConditionWins: number;
@@ -73,6 +75,7 @@ const startedAt = Date.now();
       let attempts = 0;
       let completedGames = 0;
       let drawGames = 0;
+      let longGameGames = 0;
       let incompleteGames = 0;
       let wins = 0;
       let specialConditionWins = 0;
@@ -111,6 +114,10 @@ const startedAt = Date.now();
           drawGames += 1;
           continue;
         }
+        if (result.status === "LONG_GAME") {
+          longGameGames += 1;
+          continue;
+        }
         if (result.status !== "COMPLETED") {
           incompleteGames += 1;
           continue;
@@ -125,7 +132,9 @@ const startedAt = Date.now();
       }
       if (validGames < games) throw new Error(`${augmentId} slot ${acquisitionIndex} ${playerCount}p produced ${validGames}/${games} valid contexts after ${attempts} attempts.`);
       const ownerWinRate = completedGames ? wins / completedGames : null;
-      const drawRate = completedGames + drawGames ? drawGames / (completedGames + drawGames) : null;
+      const terminalGames = completedGames + drawGames + longGameGames;
+      const drawRate = terminalGames ? drawGames / terminalGames : null;
+      const longGameRate = terminalGames ? longGameGames / terminalGames : null;
       const baselineWinRate = 1 / playerCount;
       reports.push({
         acquisitionIndex,
@@ -135,10 +144,12 @@ const startedAt = Date.now();
         discardedContexts: attempts - validGames,
         completedGames,
         drawGames,
+        longGameGames,
         incompleteGames,
         wins,
         ownerWinRate,
         drawRate,
+        longGameRate,
         baselineWinRate,
         deltaPp: ownerWinRate == null ? null : (ownerWinRate - baselineWinRate) * 100,
         specialConditionWins,
@@ -146,7 +157,7 @@ const startedAt = Date.now();
         averageRound: completedGames ? roundSum / completedGames : null,
         averageTriggers: completedGames ? triggerSum / completedGames : null,
       });
-      console.error(`[precision-all] ${augmentId} slot${acquisitionIndex} ${playerCount}p: complete ${completedGames}, draw ${drawGames}, incomplete ${incompleteGames}, win ${ownerWinRate == null ? "—" : (ownerWinRate * 100).toFixed(2) + "%"}`);
+      console.error(`[precision-all] ${augmentId} slot${acquisitionIndex} ${playerCount}p: complete ${completedGames}, long ${longGameGames}, draw ${drawGames}, technical-incomplete ${incompleteGames}, win ${ownerWinRate == null ? "—" : (ownerWinRate * 100).toFixed(2) + "%"}`);
     }
   }
 
@@ -172,12 +183,13 @@ const startedAt = Date.now();
     "",
     `- tier: ${target.tier}`,
     `- timing: ${target.timing ?? "any"}`,
-    `- max rounds: ${maxRounds} (DRAW after cap)`,
+    `- max rounds: ${maxRounds} (LONG_GAME after cap)`,
     `- valid games per slot/player-count context: ${games}`,
+    "- LONG_GAME is reported separately from STALLED/ACTION_LIMIT",
     "",
-    "| Slot | Players | Win | Delta | Draw | Incomplete | Avg triggers | Special-condition win | Discarded |",
-    "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-    ...reports.map((item) => `| ${item.acquisitionIndex} | ${item.playerCount} | ${pct(item.ownerWinRate)} | ${item.deltaPp == null ? "—" : `${item.deltaPp >= 0 ? "+" : ""}${item.deltaPp.toFixed(2)}%p`} | ${pct(item.drawRate)} | ${item.incompleteGames} | ${item.averageTriggers?.toFixed(2) ?? "—"} | ${pct(item.specialConditionWinRate)} | ${item.discardedContexts} |`),
+    "| Slot | Players | Win | Delta | Long game | Rules draw | Technical incomplete | Avg triggers | Special-condition win | Discarded |",
+    "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ...reports.map((item) => `| ${item.acquisitionIndex} | ${item.playerCount} | ${pct(item.ownerWinRate)} | ${item.deltaPp == null ? "—" : `${item.deltaPp >= 0 ? "+" : ""}${item.deltaPp.toFixed(2)}%p`} | ${pct(item.longGameRate)} | ${pct(item.drawRate)} | ${item.incompleteGames} | ${item.averageTriggers?.toFixed(2) ?? "—"} | ${pct(item.specialConditionWinRate)} | ${item.discardedContexts} |`),
     "",
   ].join("\n");
   writeFileSync(join(outputDir, `precision-${augmentId}.md`), `${markdown}\n`, "utf-8");
