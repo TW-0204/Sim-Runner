@@ -31,7 +31,38 @@ Do not classify a game as unhealthy merely because it exceeds 15 rounds. In a no
 
 The 90,000-game extended audit found 750 games over 30 rounds (0.83%). All 750 completed by the 100-round extended cap. Treat this as a long-tail reference, not evidence of a progression deadlock.
 
+A direct 6,000-seed comparison between the pre-diagnostics baseline and diagnostics implementation produced the same 40 over-30-round seeds in both versions. This confirms that the diagnostics instrumentation itself did not change natural simulation behavior in the investigated batch.
+
 `scripts/long-game-merge.ts` merges independent batches and ranks augments by association with long games. Association is diagnostic evidence, not proof that the augment caused the long game.
+
+## Bot policy baseline and capture sensitivity
+
+The official balance bot remains `balance-bot-v0.2.1`.
+
+The current move utility assigns +85 for each enemy piece captured. A sensitivity policy was tested where this capture value is divided by the number of opponents: 85 in 2-player, 42.5 in 3-player, and about 28.3 in 4-player games.
+
+This alternative policy shortens many 3-player and 4-player games, but there is no real-player telemetry yet proving that its decision pattern is more human-like. It also changes the measured magnitude of some capture-sensitive augments. For continuity and reproducibility, it is therefore a sensitivity lane only and must not replace the official baseline without separate evidence.
+
+A 400-pair same-seed audit per context produced these paired win-delta comparisons:
+
+| Augment | Context | Official v0.2.1 | Player-scaled capture | Interpretation |
+| --- | --- | ---: | ---: | --- |
+| AUG-025 추격자 | first, 3P | -4.50%p | -9.00%p | weak under both |
+| AUG-025 추격자 | first, 4P | -8.50%p | -7.75%p | weak under both |
+| AUG-025 추격자 | second, 3P | -6.25%p | -3.25%p | weak under both |
+| AUG-025 추격자 | second, 4P | -12.75%p | -5.00%p | weak under both |
+| AUG-042 추노 | first, 3P | -10.75%p | -12.25%p | weak under both |
+| AUG-042 추노 | first, 4P | -11.25%p | -13.00%p | weak under both |
+| AUG-044 신의 손 | first, 3P | +24.00%p | +24.25%p | extremely strong under both |
+| AUG-044 신의 손 | first, 4P | +22.25%p | +21.25%p | extremely strong under both |
+| AUG-053 배반 | first, 3P | +17.75%p | +15.25%p | strong under both |
+| AUG-053 배반 | first, 4P | +12.25%p | +12.25%p | strong under both |
+| AUG-053 배반 | second, 3P | +17.00%p | +15.00%p | strong under both |
+| AUG-053 배반 | second, 4P | +14.75%p | +12.75%p | strong under both |
+
+All 2-player current/scaled results matched exactly, as required because the sensitivity divisor is 1 with one opponent.
+
+Use the official bot for primary balance numbers. For augments whose value is strongly tied to capturing, rerun the player-scaled policy as a robustness check. A balance conclusion is higher-confidence when its direction remains the same under both policies.
 
 ## Cause diagnostic for a single augment
 
