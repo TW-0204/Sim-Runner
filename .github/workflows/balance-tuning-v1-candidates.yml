@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Outlier Recheck
+name: Balance Tuning V1 Rework Candidates
 
 on:
   push:
@@ -13,20 +13,18 @@ permissions:
 
 jobs:
   paired:
-    name: paired ${{ matrix.augment }}
+    name: candidate ${{ matrix.augment }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 4
       matrix:
         augment:
           - AUG-037
-          - AUG-013
-          - AUG-053
           - AUG-038
+          - AUG-053
           - AUG-059
-          - AUG-050
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,12 +37,7 @@ jobs:
           from pathlib import Path
           import re
 
-          # AUG-017 Gaepan candidate baseline:
-          # - count only GAE after acquisition
-          # - first augment slot threshold 14, second slot threshold 10
-          # - threshold-reaching GAE only unlocks
-          # - after unlock GAE grants extra rolls, YUT/MO stop doing so
-          # - remove legacy max-two stacking restriction
+          # AUG-017 Gaepan candidate baseline: 14 first / 10 second.
           p = Path('src/lib/augments/effects.ts')
           s = p.read_text()
           pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
@@ -112,10 +105,7 @@ jobs:
           s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
           p.write_text(s)
 
-          # AUG-044 God Hand candidate baseline:
-          # - next three BASIC rolls can be overridden
-          # - no recharge
-          # - retain always-MO simulation policy because it was strongest in testing
+          # AUG-044 God Hand candidate baseline: finite 3 BASIC overrides, no recharge.
           p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
           old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
@@ -131,7 +121,6 @@ jobs:
           if s.count(old_charge) != 1:
             raise SystemExit('godHandChargeCount shape changed')
           s = s.replace(old_charge, new_charge)
-
           s, count = re.subn(
             r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
             '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
@@ -145,7 +134,6 @@ jobs:
           )
           if count != 1:
             raise SystemExit('recordGodHandBasicRoll shape changed')
-
           old_spend = '''  runtime.godHandCharges ??= 0;
             runtime.godHandBasicProgress ??= 0;
             if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");
@@ -161,9 +149,112 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Apply target rework candidate inside runner only
+        env:
+          AUGMENT: ${{ matrix.augment }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          aug = os.environ['AUGMENT']
+
+          if aug == 'AUG-037':
+            p = Path('src/lib/augments/effects.ts')
+            s = p.read_text()
+            old = '''  const acePieceId = setups["AUG-030"]?.pieceId;
+            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+            return bonus;'''
+            new = '''  const acePieceId = setups["AUG-030"]?.pieceId;
+            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+            if (has(ownedIds, "AUG-037")) bonus += 1;
+            return bonus;'''
+            if s.count(old) != 1:
+              raise SystemExit('AUG-037 movement bonus insertion point changed')
+            p.write_text(s.replace(old, new))
+
+          elif aug == 'AUG-038':
+            p = Path('src/lib/game/engine.ts')
+            s = p.read_text()
+            old = '''  runtime.grandUnityUsed = true;
+            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업었습니다.`;'''
+            new = '''  runtime.fixedOneGroups ??= {};
+            runtime.fixedOneGroups[anchorGroupId] = true;
+            runtime.grandUnityUsed = true;
+            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업고, 다음 이동은 1칸으로 고정됩니다.`;'''
+            if s.count(old) != 1:
+              raise SystemExit('AUG-038 post-merge block changed')
+            p.write_text(s.replace(old, new))
+
+          elif aug == 'AUG-059':
+            p = Path('src/lib/game/engine.ts')
+            s = p.read_text()
+            old = '''  const finishedCount = Math.min(3, player?.pieces.filter((piece) => piece.status === "FINISHED").length ?? 0);
+            if (finishedCount <= 0) return null;
+            if (finishedCount === 1) return { finishNode: 22, allowed: new Set([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]) };
+            if (finishedCount === 2) return { finishNode: 10, allowed: new Set([1,2,3,4,5,6,7,8,9,10]) };
+            return { finishNode: 5, allowed: new Set([1,2,3,4,5]) };'''
+            new = '''  const finishedCount = Math.min(3, player?.pieces.filter((piece) => piece.status === "FINISHED").length ?? 0);
+            if (finishedCount < 2) return null;
+            if (finishedCount === 2) return { finishNode: 22, allowed: new Set([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]) };
+            return { finishNode: 10, allowed: new Set([1,2,3,4,5,6,7,8,9,10]) };'''
+            if s.count(old) != 1:
+              raise SystemExit('AUG-059 shrink block changed')
+            p.write_text(s.replace(old, new))
+
+          elif aug == 'AUG-053':
+            p = Path('src/lib/game/engine.ts')
+            s = p.read_text()
+            old_return = '''    piece.ownerUserId = originalOwner.userId;
+                piece.seat = originalOwner.seat;
+                piece.status = "WAITING";
+                piece.node = null;
+                piece.groupId = piece.id;
+                piece.hasEntered = false;
+                piece.pathHistory = [];
+                delete piece.betrayalOriginalOwnerUserId;'''
+            new_return = '''    piece.ownerUserId = originalOwner.userId;
+                piece.seat = originalOwner.seat;
+                piece.status = "FINISHED";
+                piece.node = null;
+                piece.groupId = piece.id;
+                piece.hasEntered = true;
+                delete piece.betrayalOriginalOwnerUserId;'''
+            if s.count(old_return) != 1:
+              raise SystemExit('AUG-053 return block changed')
+            s = s.replace(old_return, new_return)
+            old_win = '''  const player = currentPlayer(engine);
+            if (player.pieces.every((piece) => piece.status === "FINISHED")) {'''
+            new_win = '''  const player = currentPlayer(engine);
+            const borrowedPieceStillOut = engine.players.some((holder) => holder.pieces.some((piece) => (
+              piece.betrayalOriginalOwnerUserId === player.userId && piece.status !== "FINISHED"
+            )));
+            if (!borrowedPieceStillOut && player.pieces.every((piece) => piece.status === "FINISHED")) {'''
+            if s.count(old_win) != 1:
+              raise SystemExit('basic winner block changed')
+            s = s.replace(old_win, new_win)
+            p.write_text(s)
+
+            p = Path('src/lib/game/augment-lifecycle.ts')
+            s = p.read_text()
+            old = '''  const player = engine.players.find((candidate) => candidate.userId === userId);
+            if (!player || !player.pieces.every((piece) => piece.status === "FINISHED")) return;'''
+            new = '''  const player = engine.players.find((candidate) => candidate.userId === userId);
+            const borrowedPieceStillOut = engine.players.some((holder) => holder.pieces.some((piece) => (
+              piece.betrayalOriginalOwnerUserId === userId && piece.status !== "FINISHED"
+            )));
+            if (!player || borrowedPieceStillOut || !player.pieces.every((piece) => piece.status === "FINISHED")) return;'''
+            if s.count(old) != 1:
+              raise SystemExit('AUG-053 acquisition winner block changed')
+            p.write_text(s.replace(old, new))
+
+          else:
+            raise SystemExit(f'unknown candidate {aug}')
+          PY
+
           git diff --check
 
-      - name: Run 500-pair cause diagnostic
+      - name: Run 500-pair candidate diagnostic
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
           --augment ${{ matrix.augment }}
@@ -174,7 +265,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tuning-paired-${{ matrix.augment }}-500
+          name: tuning-rework-${{ matrix.augment }}-500
           path: tuning-results/${{ matrix.augment }}/
           if-no-files-found: error
           retention-days: 14
