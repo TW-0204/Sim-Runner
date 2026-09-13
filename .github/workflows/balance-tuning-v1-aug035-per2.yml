@@ -1,0 +1,62 @@
+name: Balance Tuning V1 AUG035 Per Two
+
+on:
+  push:
+    branches: [balance/tuning-v1]
+    paths: ['.github/workflows/balance-tuning-v1-aug035-per2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    name: AUG-035 front-back per-two bonus 500 pairs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Apply settled baseline and AUG-035 candidate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          wf = Path('.github/workflows/balance-tuning-v1-candidates.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(wf) if line.strip() == "python - <<'PY'") + 1
+          end = next(i for i in range(start, len(wf)) if wf[i].strip() == 'PY')
+          baseline = '\n'.join(line[10:] if line.startswith('          ') else line for line in wf[start:end]) + '\n'
+          Path('/tmp/baseline.py').write_text(baseline)
+          subprocess.run(['python', '/tmp/baseline.py'], check=True)
+
+          p = Path('src/lib/game/capture-choice.ts')
+          s = p.read_text()
+          normal_roll = '  if (!blocksCaptureExtraRoll(pieces.length, victimOwned)) pending.resumePendingRolls.push("CAPTURE");\n'
+          betrayal_roll = '  if (betrayalCaptureBonusRoll(engine, decision.attackerUserId, decision.attackerGroupId, target.victimUserId) > 0) pending.resumePendingRolls.push("AUGMENT");\n'
+          if s.count(normal_roll) != 1 or s.count(betrayal_roll) != 1:
+            raise SystemExit('AUG-035 extra-roll block shape changed')
+          replacement = '''  const doubleHitBonusRolls = Math.floor(pieces.length / 2);\n  for (let index = 0; index < doubleHitBonusRolls; index += 1) pending.resumePendingRolls.push("AUGMENT");\n'''
+          s = s.replace(normal_roll + betrayal_roll, replacement, 1)
+          p.write_text(s)
+          PY
+          git diff --check
+
+      - name: Run AUG-035 paired diagnostic
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment AUG-035
+          --games 500
+          --max-rounds 60
+          --output-dir tuning-results/AUG-035-per2
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tuning-AUG-035-front-back-per2-500
+          path: tuning-results/AUG-035-per2/
+          if-no-files-found: error
+          retention-days: 14
