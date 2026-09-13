@@ -1,0 +1,64 @@
+name: Balance Tuning V1 AUG035 Front Back
+
+on:
+  push:
+    branches: [balance/tuning-v1]
+    paths: ['.github/workflows/balance-tuning-v1-aug035-front-back.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    name: AUG-035 front-back no-extra-roll 500 pairs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Apply settled baseline and AUG-035 candidate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          wf = Path('.github/workflows/balance-tuning-v1-candidates.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(wf) if line.strip() == "python - <<'PY'") + 1
+          end = next(i for i in range(start, len(wf)) if wf[i].strip() == 'PY')
+          baseline = '\n'.join(line[10:] if line.startswith('          ') else line for line in wf[start:end]) + '\n'
+          Path('/tmp/baseline.py').write_text(baseline)
+          subprocess.run(['python', '/tmp/baseline.py'], check=True)
+
+          p = Path('src/lib/game/capture-choice.ts')
+          s = p.read_text()
+          lines = [
+            '  if (!blocksCaptureExtraRoll(pieces.length, victimOwned)) pending.resumePendingRolls.push("CAPTURE");\n',
+            '  if (betrayalCaptureBonusRoll(engine, decision.attackerUserId, decision.attackerGroupId, target.victimUserId) > 0) pending.resumePendingRolls.push("AUGMENT");\n',
+          ]
+          for line in lines:
+            if s.count(line) != 1:
+              raise SystemExit(f'AUG-035 extra-roll line count changed: {s.count(line)}')
+            s = s.replace(line, '', 1)
+          p.write_text(s)
+          PY
+          git diff --check
+
+      - name: Run AUG-035 paired diagnostic
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment AUG-035
+          --games 500
+          --max-rounds 60
+          --output-dir tuning-results/AUG-035-front-back
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tuning-AUG-035-front-back-no-extra-roll-500
+          path: tuning-results/AUG-035-front-back/
+          if-no-files-found: error
+          retention-days: 14
