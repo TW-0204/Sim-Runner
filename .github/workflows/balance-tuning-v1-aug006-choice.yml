@@ -1,0 +1,67 @@
+name: Balance Tuning V1 AUG006 Choice
+on:
+  push:
+    branches: [balance/tuning-v1]
+    paths: ['.github/workflows/balance-tuning-v1-aug006-choice.yml']
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24.x' }
+      - name: Apply baseline and candidate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          wf=Path('.github/workflows/balance-tuning-v1-candidates.yml').read_text().splitlines()
+          a=next(i for i,x in enumerate(wf) if x.strip()=="python - <<'PY'")+1
+          b=next(i for i in range(a,len(wf)) if wf[i].strip()=='PY')
+          exec('\n'.join(x[10:] if x.startswith('          ') else x for x in wf[a:b]))
+          p=Path('src/lib/game/action-lifecycle.ts'); s=p.read_text()
+          s=s.replace('  args: GameMoveArgs,\n) {','  args: GameMoveArgs,\n  movementOwnedIdsOverride?: string[],\n) {',1)
+          s=s.replace('    moveOwnedIdsForAthlete(owned),\n','    movementOwnedIdsOverride ?? moveOwnedIdsForAthlete(owned),\n',1)
+          p.write_text(s)
+          p=Path('src/lib/simulation/game.ts'); s=p.read_text()
+          pat=r'function bestMove\(context: SimulationContext, engine: GameEngineState, userId: string\) \{.*?\n\}\n\nfunction maybeSaveTomorrow'
+          rep='''function bestMove(context: SimulationContext, engine: GameEngineState, userId: string) {
+            const owned = actorOwned(context, userId);
+            const setups = actorSetups(context, userId);
+            const boosted = moveOwnedIdsForAthlete(owned);
+            const choose = owned.includes("AUG-006") && boosted.includes("AUG-006");
+            const modes = choose ? [boosted, boosted.filter((id) => id !== "AUG-006")] : [boosted];
+            const candidates: Array<{ next: GameEngineState; score: number }> = [];
+            for (const movementOwned of modes) {
+              const baseMode = choose && !movementOwned.includes("AUG-006");
+              const options = legalMoveOptionsWithAugments(engine, userId, owned, setups, context.ownedByUser, movementOwned);
+              for (const option of options) {
+                if (baseMode && !engine.players.find((p) => p.userId === userId)?.pieces.some((p) => p.groupId === option.groupId && p.status === "WAITING")) continue;
+                try {
+                  const next = executeMoveAction(context, engine, userId, moveArgsForTarget(option.groupId, option.result, option.target, owned.includes("AUG-031")), movementOwned);
+                  candidates.push({ next, score: outcomeScore(context, engine, next, userId) + context.rng.decision.next() * 0.001 });
+                } catch {}
+              }
+            }
+            candidates.sort((l, r) => r.score - l.score);
+            return candidates[0]?.next ?? null;
+          }
+
+          function maybeSaveTomorrow'''
+          s,n=re.subn(pat,rep,s,count=1,flags=re.S)
+          if n!=1: raise SystemExit('bestMove shape changed')
+          p.write_text(s)
+          PY
+          git diff --check
+      - name: Run diagnostic
+        run: node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts --augment AUG-006 --games 500 --max-rounds 60 --output-dir tuning-results/AUG-006-choice
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tuning-AUG-006-choice-500
+          path: tuning-results/AUG-006-choice/
+          if-no-files-found: error
+          retention-days: 14
