@@ -139,9 +139,9 @@ jobs:
           s = s.replace(old_spend, new_spend)
           p.write_text(s)
 
-          # AUG-035 candidate: trigger on a capture at the landing tile, then only the
-          # next tile in the movement direction can be selected for the extra capture.
-          # The extra capture itself grants no CAPTURE or AUGMENT extra roll.
+          # AUG-035 candidate: landing capture still triggers it, but the extra target
+          # can only be one tile ahead in the actual movement direction. The extra
+          # capture itself grants no CAPTURE or AUGMENT extra roll.
           p = Path('src/lib/game/capture-choice.ts')
           s = p.read_text()
           old_header = '''function doubleHitTargets(
@@ -168,14 +168,11 @@ jobs:
             raise SystemExit('AUG-035 target range block shape changed')
           s = s.replace(old_header, new_header)
 
-          old_call = '''      const previousNode = movement.path.length >= 2
-            ? movement.path[movement.path.length - 2]
-            : movement.startNode > 0 ? movement.startNode : null;
-          const targets = doubleHitTargets(after, args.attackerUserId, destination, previousNode, result, args.ownedByUser);'''
-          new_call = '''      const targets = doubleHitTargets(after, args.attackerUserId, destination, result, args.ownedByUser);'''
-          if s.count(old_call) != 1:
+          call_pattern = r'''\n\s*const previousNode = movement\.path\.length >= 2\n\s*\? movement\.path\[movement\.path\.length - 2\]\n\s*: movement\.startNode > 0 \? movement\.startNode : null;\n\s*const targets = doubleHitTargets\(after, args\.attackerUserId, destination, previousNode, result, args\.ownedByUser\);'''
+          call_replacement = '\n      const targets = doubleHitTargets(after, args.attackerUserId, destination, result, args.ownedByUser);'
+          s, count = re.subn(call_pattern, call_replacement, s, count=1)
+          if count != 1:
             raise SystemExit('AUG-035 target call shape changed')
-          s = s.replace(old_call, new_call)
 
           normal_roll = '  if (!blocksCaptureExtraRoll(pieces.length, victimOwned)) pending.resumePendingRolls.push("CAPTURE");\n'
           betrayal_roll = '  if (betrayalCaptureBonusRoll(engine, decision.attackerUserId, decision.attackerGroupId, target.victimUserId) > 0) pending.resumePendingRolls.push("AUGMENT");\n'
