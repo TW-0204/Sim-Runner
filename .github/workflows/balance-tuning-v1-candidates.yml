@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Overpass Candidate
+name: Balance Tuning V1 Grand Unity Candidate
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   paired:
-    name: candidate AUG-037 plus2
+    name: candidate AUG-038 turn-cost
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -28,7 +28,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # AUG-017 Gaepan candidate baseline: 14 first / 10 second.
           p = Path('src/lib/augments/effects.ts')
           s = p.read_text()
           pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
@@ -96,7 +95,6 @@ jobs:
           s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
           p.write_text(s)
 
-          # AUG-044 God Hand candidate baseline: finite 3 BASIC overrides, no recharge.
           p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
           old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
@@ -140,22 +138,42 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Apply AUG-037 plus-two candidate inside runner only
+      - name: Apply AUG-038 turn-cost candidate inside runner only
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          p = Path('src/lib/augments/effects.ts')
+          p = Path('src/lib/game/engine.ts')
           s = p.read_text()
-          old = '''  const acePieceId = setups["AUG-030"]?.pieceId;
-            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
-            return bonus;'''
-          new = '''  const acePieceId = setups["AUG-030"]?.pieceId;
-            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
-            if (has(ownedIds, "AUG-037")) bonus += 2;
-            return bonus;'''
+          old = '''  runtime.grandUnityUsed = true;
+            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업었습니다.`;
+            if (checkSpecialWinner(engine, ownedIds)) return engine;
+
+            const augmentExtraRolls = stackAugmentExtraRolls(engine, player.userId, true, ownedIds);
+            if (augmentExtraRolls > 0) {
+              if (engine.stage === "MOVING") {
+                engine.pendingRolls.push("AUGMENT");
+                engine.stage = "AWAITING_ROLL";
+              } else {
+                engine.pendingRolls.unshift("AUGMENT");
+              }
+            }
+            return engine;'''
+          new = '''  runtime.grandUnityUsed = true;
+            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업었습니다.`;
+            if (checkSpecialWinner(engine, ownedIds)) return engine;
+
+            engine.pendingRolls = [];
+            engine.results = [];
+            engine.pendingRollChoice = null;
+            engine.pendingSplitChoice = null;
+            engine.pendingCaptureChoice = null;
+            engine.pendingRelocationChoice = null;
+            engine.pendingStackChoice = null;
+            advanceTurn(engine);
+            return engine;'''
           if s.count(old) != 1:
-            raise SystemExit('AUG-037 movement bonus insertion point changed')
+            raise SystemExit('AUG-038 resolution block changed')
           p.write_text(s.replace(old, new))
           PY
 
@@ -164,15 +182,15 @@ jobs:
       - name: Run 500-pair candidate diagnostic
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
-          --augment AUG-037
+          --augment AUG-038
           --games 500
           --max-rounds 60
-          --output-dir tuning-results/AUG-037
+          --output-dir tuning-results/AUG-038
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tuning-rework-AUG-037-plus2-500
-          path: tuning-results/AUG-037/
+          name: tuning-rework-AUG-038-turn-cost-500
+          path: tuning-results/AUG-038/
           if-no-files-found: error
           retention-days: 14
