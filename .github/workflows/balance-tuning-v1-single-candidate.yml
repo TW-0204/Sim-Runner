@@ -1,0 +1,205 @@
+name: Balance Tuning V1 Single Candidate
+
+on:
+  push:
+    branches:
+      - balance/tuning-v1
+    paths:
+      - '.github/workflows/balance-tuning-v1-single-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    name: AUG-035 narrowed double-hit 500 pairs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Apply settled candidate baseline inside runner only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # AUG-017 Gaepan settled candidate baseline.
+          p = Path('src/lib/augments/effects.ts')
+          s = p.read_text()
+          pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
+          replacement = '''export function grantsFaceExtraRoll(face: RollFace, ownedIds: string[]) {
+            if (has(ownedIds, "AUG-017")) return face === "GAE";
+            return face === "YUT" || face === "MO";
+          }
+
+          function gaepanCandidateThreshold(ownedIds: string[]) {
+            return ownedIds[0] === "AUG-017" ? 14 : 10;
+          }
+
+          export function canGrantFaceExtraRoll(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            const threshold = gaepanCandidateThreshold(ownedIds);
+            const countBeforeThisRoll = engine.augmentRuntime?.[userId]?.g01GameGaeCount ?? 0;
+            if (face === "GAE") return countBeforeThisRoll + 1 > threshold;
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < threshold;
+            return false;
+          }
+
+          export function consumeFaceExtraRollGrant(
+            engine: GameEngineState,
+            userId: string,
+            face: RollFace,
+            ownedIds: string[],
+          ) {
+            if (!has(ownedIds, "AUG-017")) return face === "YUT" || face === "MO";
+            const threshold = gaepanCandidateThreshold(ownedIds);
+            const runtime = runtimeForPlayer(engine, userId);
+            const countBeforeThisRoll = runtime.g01GameGaeCount ?? 0;
+            if (face === "GAE") {
+              const countAfterThisRoll = countBeforeThisRoll + 1;
+              runtime.g01GameGaeCount = countAfterThisRoll;
+              return countAfterThisRoll > threshold;
+            }
+            if (face === "YUT" || face === "MO") return countBeforeThisRoll < threshold;
+            return false;
+          }
+
+          export function armA04OnAcquisition'''
+          s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if count != 1:
+            raise SystemExit('Gaepan face-extra block shape changed')
+          p.write_text(s)
+
+          p = Path('src/lib/game/types.ts')
+          s = p.read_text()
+          marker = '  g01ExtraRollsGranted?: number;\n'
+          if marker not in s:
+            raise SystemExit('Gaepan runtime marker missing')
+          s = s.replace(marker, marker + '  g01GameGaeCount?: number;\n', 1)
+          p.write_text(s)
+
+          p = Path('src/lib/game/engine.ts')
+          s = p.read_text()
+          guards = s.count('if (ownedIds.includes("AUG-017")) {')
+          if guards != 3:
+            raise SystemExit(f'expected 3 Gaepan stack-limit guards, found {guards}')
+          s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
+          p.write_text(s)
+
+          # AUG-044 God Hand settled candidate baseline: three BASIC overrides, no recharge.
+          p = Path('src/lib/game/roll-flow.ts')
+          s = p.read_text()
+          old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
+            if (!has(ownedIds, "AUG-044")) return 0;
+            return engine.augmentRuntime?.[userId]?.godHandCharges ?? 0;
+          }'''
+          new_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
+            if (!has(ownedIds, "AUG-044")) return 0;
+            const runtime = runtimeFor(engine, userId);
+            if (runtime.godHandCharges == null) runtime.godHandCharges = 3;
+            return runtime.godHandCharges;
+          }'''
+          if s.count(old_charge) != 1:
+            raise SystemExit('godHandChargeCount shape changed')
+          s = s.replace(old_charge, new_charge)
+          s, count = re.subn(
+            r'function recordGodHandBasicRoll\(engine: GameEngineState, userId: string, ownedIds: string\[\]\) \{.*?\n\}\n\nfunction canUseDoReroll',
+            '''function recordGodHandBasicRoll(engine: GameEngineState, userId: string, ownedIds: string[]) {
+            if (!has(ownedIds, "AUG-044")) return;
+          }
+
+          function canUseDoReroll''',
+            s,
+            count=1,
+            flags=re.S,
+          )
+          if count != 1:
+            raise SystemExit('recordGodHandBasicRoll shape changed')
+          old_spend = '''  runtime.godHandCharges ??= 0;
+            runtime.godHandBasicProgress ??= 0;
+            if (runtime.godHandCharges < 1) throw new Error("신의 손 충전이 없습니다.");
+            runtime.godHandCharges -= 1;
+            runtime.godHandBasicProgress = 0;
+            runtime.godHandSkipNextBasicProgress = true;'''
+          new_spend = '''  if (runtime.godHandCharges == null) runtime.godHandCharges = 3;
+            if (runtime.godHandCharges < 1) throw new Error("신의 손 사용 횟수가 없습니다.");
+            runtime.godHandCharges -= 1;'''
+          if s.count(old_spend) != 1:
+            raise SystemExit('God Hand spend block shape changed')
+          s = s.replace(old_spend, new_spend)
+          p.write_text(s)
+
+          # AUG-035 candidate: trigger on a capture at the landing tile, then only the
+          # next tile in the movement direction can be selected for the extra capture.
+          # The extra capture itself grants no CAPTURE or AUGMENT extra roll.
+          p = Path('src/lib/game/capture-choice.ts')
+          s = p.read_text()
+          old_header = '''function doubleHitTargets(
+            engine: GameEngineState,
+            attackerUserId: string,
+            destination: number,
+            previousNode: number | null,
+            result: RollToken,
+            ownedByUser: Record<string, string[]>,
+          ) {
+            const nodes = new Set<number>();
+            if (previousNode != null && previousNode > 0 && previousNode !== destination && previousNode !== FINISH_NODE) nodes.add(previousNode);
+            for (const node of nextNodesAfterDestination(destination, result, ownedByUser[attackerUserId] ?? [])) {'''
+          new_header = '''function doubleHitTargets(
+            engine: GameEngineState,
+            attackerUserId: string,
+            destination: number,
+            result: RollToken,
+            ownedByUser: Record<string, string[]>,
+          ) {
+            const nodes = new Set<number>();
+            for (const node of nextNodesAfterDestination(destination, result, ownedByUser[attackerUserId] ?? [])) {'''
+          if s.count(old_header) != 1:
+            raise SystemExit('AUG-035 target range block shape changed')
+          s = s.replace(old_header, new_header)
+
+          old_call = '''      const previousNode = movement.path.length >= 2
+            ? movement.path[movement.path.length - 2]
+            : movement.startNode > 0 ? movement.startNode : null;
+          const targets = doubleHitTargets(after, args.attackerUserId, destination, previousNode, result, args.ownedByUser);'''
+          new_call = '''      const targets = doubleHitTargets(after, args.attackerUserId, destination, result, args.ownedByUser);'''
+          if s.count(old_call) != 1:
+            raise SystemExit('AUG-035 target call shape changed')
+          s = s.replace(old_call, new_call)
+
+          normal_roll = '  if (!blocksCaptureExtraRoll(pieces.length, victimOwned)) pending.resumePendingRolls.push("CAPTURE");\n'
+          betrayal_roll = '  if (betrayalCaptureBonusRoll(engine, decision.attackerUserId, decision.attackerGroupId, target.victimUserId) > 0) pending.resumePendingRolls.push("AUGMENT");\n'
+          if s.count(normal_roll) != 1 or s.count(betrayal_roll) != 1:
+            raise SystemExit('AUG-035 extra-roll block shape changed')
+          s = s.replace(normal_roll, '', 1)
+          s = s.replace(betrayal_roll, '', 1)
+          p.write_text(s)
+          PY
+
+          git diff --check
+
+      - name: Run AUG-035 paired diagnostic
+        run: >-
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment AUG-035
+          --games 500
+          --max-rounds 60
+          --output-dir tuning-results/AUG-035-candidate
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tuning-AUG-035-narrow-no-extra-roll-500
+          path: tuning-results/AUG-035-candidate/
+          if-no-files-found: error
+          retention-days: 14
