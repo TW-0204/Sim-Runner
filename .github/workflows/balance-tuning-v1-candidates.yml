@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Betrayal Candidate
+name: Balance Tuning V1 Overpass Candidate
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   paired:
-    name: candidate AUG-053
+    name: candidate AUG-037 plus2
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -140,71 +140,23 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Apply AUG-053 completion-accounting candidate inside runner only
+      - name: Apply AUG-037 plus-two candidate inside runner only
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          p = Path('src/lib/game/engine.ts')
+          p = Path('src/lib/augments/effects.ts')
           s = p.read_text()
-
-          # A betrayed piece completed by its temporary holder returns to the original
-          # owner as FINISHED, not WAITING.
-          pattern = r'''    piece\.ownerUserId = originalOwner\.userId;\n    piece\.seat = originalOwner\.seat;\n    piece\.status = "WAITING";\n    piece\.node = null;\n    piece\.groupId = piece\.id;\n    piece\.hasEntered = false;\n    piece\.pathHistory = \[\];\n    delete piece\.betrayalOriginalOwnerUserId;\n    originalOwner\.pieces\.push\(piece\);'''
-          replacement = '''    piece.ownerUserId = originalOwner.userId;
-            piece.seat = originalOwner.seat;
-            piece.status = "FINISHED";
-            piece.node = null;
-            piece.groupId = piece.id;
-            piece.hasEntered = true;
-            delete piece.betrayalOriginalOwnerUserId;
-            originalOwner.pieces.push(piece);
-            if (originalOwner.pieces.every((candidate) => candidate.status === "FINISHED")) {
-              declareWinner(engine, originalOwner.userId, "NORMAL", `${originalOwner.displayName}: 배반한 말까지 완주되어 승리!`);
-            }'''
-          s, count = re.subn(pattern, replacement, s, count=1)
-          if count != 1:
-            raise SystemExit('AUG-053 return block changed')
-
-          # The original owner may not win on only three pieces while their betrayed
-          # fourth piece is still unfinished under another player's control.
-          pattern = r'''  const player = currentPlayer\(engine\);\n  if \(player\.pieces\.every\(\(piece\) => piece\.status === "FINISHED"\)\) \{'''
-          replacement = '''  const player = currentPlayer(engine);
-            const betrayedPieceStillOut = engine.players.some((holder) => holder.pieces.some((piece) => (
-              piece.betrayalOriginalOwnerUserId === player.userId && piece.status !== "FINISHED"
-            )));
-            if (!betrayedPieceStillOut && player.pieces.every((piece) => piece.status === "FINISHED")) {'''
-          s, count = re.subn(pattern, replacement, s, count=1)
-          if count != 1:
-            raise SystemExit('basic winner block changed')
-
-          # If the completion return declared the original owner winner, do not continue
-          # resolving the temporary holder's move and overwrite that result.
-          old = '''  const betrayalReturns = returnFinishedBetrayals(engine);
-            if (betrayalReturns > 0) engine.lastAction += ` · 배반 말 ${betrayalReturns}개가 원래 주인의 대기로 돌아갔습니다.`;
-            if (checkSpecialWinner(engine, ownedIds)) return;'''
-          new = '''  const betrayalReturns = returnFinishedBetrayals(engine);
-            if (engine.winnerUserId) return;
-            if (betrayalReturns > 0) engine.lastAction += ` · 배반 말 ${betrayalReturns}개가 원래 주인에게 완주 상태로 돌아갔습니다.`;
-            if (checkSpecialWinner(engine, ownedIds)) return;'''
+          old = '''  const acePieceId = setups["AUG-030"]?.pieceId;
+            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+            return bonus;'''
+          new = '''  const acePieceId = setups["AUG-030"]?.pieceId;
+            if (has(ownedIds, "AUG-030") && acePieceId && group.some((piece) => piece.id === acePieceId)) bonus += 1;
+            if (has(ownedIds, "AUG-037")) bonus += 2;
+            return bonus;'''
           if s.count(old) != 1:
-            raise SystemExit('finishResolvedMove betrayal block changed')
-          s = s.replace(old, new)
-          p.write_text(s)
-
-          p = Path('src/lib/game/augment-lifecycle.ts')
-          s = p.read_text()
-          pattern = r'''  const player = engine\.players\.find\(\(candidate\) => candidate\.userId === userId\);\n  if \(!player \|\| !player\.pieces\.every\(\(piece\) => piece\.status === "FINISHED"\)\) return;'''
-          replacement = '''  const player = engine.players.find((candidate) => candidate.userId === userId);
-            const betrayedPieceStillOut = engine.players.some((holder) => holder.pieces.some((piece) => (
-              piece.betrayalOriginalOwnerUserId === userId && piece.status !== "FINISHED"
-            )));
-            if (!player || betrayedPieceStillOut || !player.pieces.every((piece) => piece.status === "FINISHED")) return;'''
-          s, count = re.subn(pattern, replacement, s, count=1)
-          if count != 1:
-            raise SystemExit('AUG-053 acquisition winner block changed')
-          p.write_text(s)
+            raise SystemExit('AUG-037 movement bonus insertion point changed')
+          p.write_text(s.replace(old, new))
           PY
 
           git diff --check
@@ -212,15 +164,15 @@ jobs:
       - name: Run 500-pair candidate diagnostic
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
-          --augment AUG-053
+          --augment AUG-037
           --games 500
           --max-rounds 60
-          --output-dir tuning-results/AUG-053
+          --output-dir tuning-results/AUG-037
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tuning-rework-AUG-053-completion-500
-          path: tuning-results/AUG-053/
+          name: tuning-rework-AUG-037-plus2-500
+          path: tuning-results/AUG-037/
           if-no-files-found: error
           retention-days: 14
