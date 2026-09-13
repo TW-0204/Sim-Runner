@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Full Recheck
+name: Balance Tuning V1 Outlier Recheck
 
 on:
   push:
@@ -12,9 +12,21 @@ permissions:
   contents: read
 
 jobs:
-  scan:
+  paired:
+    name: paired ${{ matrix.augment }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        augment:
+          - AUG-037
+          - AUG-013
+          - AUG-053
+          - AUG-038
+          - AUG-059
+          - AUG-050
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,7 +39,7 @@ jobs:
           from pathlib import Path
           import re
 
-          # AUG-017 Gaepan candidate baseline for natural mixed games:
+          # AUG-017 Gaepan candidate baseline:
           # - count only GAE after acquisition
           # - first augment slot threshold 14, second slot threshold 10
           # - threshold-reaching GAE only unlocks
@@ -101,10 +113,9 @@ jobs:
           p.write_text(s)
 
           # AUG-044 God Hand candidate baseline:
-          # - exactly three upcoming BASIC roll overrides after acquisition
-          # - no recharge afterwards
-          # The normal simulator's always-MO policy is intentionally retained because
-          # it was the strongest measured policy and is therefore conservative.
+          # - next three BASIC rolls can be overridden
+          # - no recharge
+          # - retain always-MO simulation policy because it was strongest in testing
           p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
           old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
@@ -152,20 +163,18 @@ jobs:
 
           git diff --check
 
-      - name: Run all-augment natural screening
+      - name: Run 500-pair cause diagnostic
         run: >-
-          node --import ./scripts/register-ts-hooks.mjs scripts/balance-auto-scan.ts
-          --ruleset two-aug-start-r4-special-slots-v2
-          --games 6000
-          --min-samples 120
-          --max-actions 100000
-          --output-dir tuning-results/full-recheck
-          --fail-on-incomplete
+          node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
+          --augment ${{ matrix.augment }}
+          --games 500
+          --max-rounds 60
+          --output-dir tuning-results/${{ matrix.augment }}
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tuning-full-recheck-natural-18k
-          path: tuning-results/full-recheck/
+          name: tuning-paired-${{ matrix.augment }}-500
+          path: tuning-results/${{ matrix.augment }}/
           if-no-files-found: error
           retention-days: 14
