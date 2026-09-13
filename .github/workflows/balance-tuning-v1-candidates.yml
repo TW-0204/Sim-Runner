@@ -1,4 +1,4 @@
-name: Balance Tuning V1 Grand Unity Candidate
+name: Balance Tuning V1 Problem Recheck
 
 on:
   push:
@@ -13,9 +13,35 @@ permissions:
 
 jobs:
   paired:
-    name: candidate AUG-038 turn-cost
+    name: recheck ${{ matrix.augment }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { augment: AUG-018, games: 300 }
+          - { augment: AUG-026, games: 300 }
+          - { augment: AUG-028, games: 300 }
+          - { augment: AUG-029, games: 300 }
+          - { augment: AUG-057, games: 300 }
+          - { augment: AUG-015, games: 300 }
+          - { augment: AUG-035, games: 300 }
+          - { augment: AUG-039, games: 300 }
+          - { augment: AUG-045, games: 300 }
+          - { augment: AUG-046, games: 300 }
+          - { augment: AUG-001, games: 300 }
+          - { augment: AUG-006, games: 300 }
+          - { augment: AUG-007, games: 300 }
+          - { augment: AUG-009, games: 300 }
+          - { augment: AUG-011, games: 300 }
+          - { augment: AUG-025, games: 300 }
+          - { augment: AUG-052, games: 300 }
+          - { augment: AUG-031, games: 500 }
+          - { augment: AUG-033, games: 500 }
+          - { augment: AUG-041, games: 500 }
+          - { augment: AUG-042, games: 500 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,6 +54,8 @@ jobs:
           from pathlib import Path
           import re
 
+          # AUG-017 Gaepan candidate baseline: acquisition-scoped 14 first / 10 second,
+          # no stack cap, YUT/MO normal before unlock and suppressed after unlock.
           p = Path('src/lib/augments/effects.ts')
           s = p.read_text()
           pattern = r'export function grantsFaceExtraRoll\(face: RollFace, ownedIds: string\[\]\) \{.*?\n\}\n\nexport function armA04OnAcquisition'
@@ -95,6 +123,7 @@ jobs:
           s = s.replace('if (ownedIds.includes("AUG-017")) {', 'if (false && ownedIds.includes("AUG-017")) {')
           p.write_text(s)
 
+          # AUG-044 God Hand candidate baseline: three BASIC overrides, no recharge.
           p = Path('src/lib/game/roll-flow.ts')
           s = p.read_text()
           old_charge = '''export function godHandChargeCount(engine: GameEngineState, userId: string, ownedIds: string[]) {
@@ -138,59 +167,20 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Apply AUG-038 turn-cost candidate inside runner only
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('src/lib/game/engine.ts')
-          s = p.read_text()
-          old = '''  runtime.grandUnityUsed = true;
-            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업었습니다.`;
-            if (checkSpecialWinner(engine, ownedIds)) return engine;
-
-            const augmentExtraRolls = stackAugmentExtraRolls(engine, player.userId, true, ownedIds);
-            if (augmentExtraRolls > 0) {
-              if (engine.stage === "MOVING") {
-                engine.pendingRolls.push("AUGMENT");
-                engine.stage = "AWAITING_ROLL";
-              } else {
-                engine.pendingRolls.unshift("AUGMENT");
-              }
-            }
-            return engine;'''
-          new = '''  runtime.grandUnityUsed = true;
-            engine.lastAction = `${player.displayName}: 대동단결 · 말판 위 모든 말을 ${destination}번으로 모아 업었습니다.`;
-            if (checkSpecialWinner(engine, ownedIds)) return engine;
-
-            engine.pendingRolls = [];
-            engine.results = [];
-            engine.pendingRollChoice = null;
-            engine.pendingSplitChoice = null;
-            engine.pendingCaptureChoice = null;
-            engine.pendingRelocationChoice = null;
-            engine.pendingStackChoice = null;
-            advanceTurn(engine);
-            return engine;'''
-          if s.count(old) != 1:
-            raise SystemExit('AUG-038 resolution block changed')
-          p.write_text(s.replace(old, new))
-          PY
-
           git diff --check
 
-      - name: Run 500-pair candidate diagnostic
+      - name: Run paired diagnostic
         run: >-
           node --import ./scripts/register-ts-hooks.mjs scripts/augment-diagnostic-run.ts
-          --augment AUG-038
-          --games 500
+          --augment ${{ matrix.augment }}
+          --games ${{ matrix.games }}
           --max-rounds 60
-          --output-dir tuning-results/AUG-038
+          --output-dir tuning-results/${{ matrix.augment }}
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tuning-rework-AUG-038-turn-cost-500
-          path: tuning-results/AUG-038/
+          name: tuning-problem-recheck-${{ matrix.augment }}-${{ matrix.games }}
+          path: tuning-results/${{ matrix.augment }}/
           if-no-files-found: error
           retention-days: 14
