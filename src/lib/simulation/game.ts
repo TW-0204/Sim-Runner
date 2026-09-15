@@ -1,57 +1,22 @@
 import { AUGMENTS, AUGMENT_BY_ID, resolveAugmentId, type AugmentTier } from "@/lib/augments/catalog";
-import {
-  canGrantFaceExtraRoll,
-  isGroupUsableWithAugments,
-  type PlayerAugmentSetups,
-} from "@/lib/augments/effects";
-import { referencedSetupPieceIds } from "@/lib/augments/setup";
+import type { PlayerAugmentSetups } from "@/lib/augments/effects";
+import { requiresPieceSetup } from "@/lib/augments/setup";
 import { buildPhaseOffers, canOffer, chancePerDrawForMaxGameExposure, pickTierSequence, SPECIAL_AUGMENT_IDS } from "@/lib/augments/server";
-import { applyLoneWolfAllyCapture } from "@/lib/game/ally-capture";
 import { applyAugmentAcquisitionLifecycle } from "@/lib/game/augment-lifecycle";
-import {
-  executeGrandUnityAction,
-  executeMoveAction,
-  executeRelocationAction,
-  executeStackAction,
-  finalizeAction,
-  type GameMoveArgs,
-} from "@/lib/game/action-lifecycle";
 import { assertGameStateInvariants } from "@/lib/game/invariants";
 import { moveOwnedIdsForAthlete } from "@/lib/game/athlete";
-import { applyCaptureChoice } from "@/lib/game/capture-choice";
 import {
-  applyGachaMachine,
-  applyMarginExit,
-  applyMarginReturn,
-  applyWormholeTurn,
   createInitialEngine,
   currentPlayer,
-  expireWormholeForCurrentRound,
-  legalMoveOptionsWithAugments,
   discardMovementResultsWhenNoLegalMove,
-  gachaMachineIsReady,
-  isForcedRelocationImmune,
   resolveDueWormholeReturns,
-  wormholeIsOpen,
 } from "@/lib/game/engine";
-import {
-  allocateNumberPool,
-  normalizeNumberPool,
-  splitNumberResult,
-} from "@/lib/game/number-cells";
+import { normalizeNumberPool } from "@/lib/game/number-cells";
 import {
   applyCrossTransitionLegacyRules,
   applyPostTransitionAugmentLifecycle,
 } from "@/lib/game/transition-lifecycle";
-import { baseStepsForFace } from "@/lib/game/roll";
-import {
-  godHandChargeCount,
-  keepDoResult,
-  resolveDualRollChoice,
-} from "@/lib/game/roll-flow";
-import { executeDoRerollLifecycle, executeRollLifecycle } from "@/lib/game/roll-lifecycle";
-import { applySelfRelianceSplit } from "@/lib/game/self-reliance";
-import { injectTomorrowResult, saveResultForTomorrow } from "@/lib/game/tomorrow";
+import { injectTomorrowResult } from "@/lib/game/tomorrow";
 import {
   activatePlagueTurnIfNeeded,
   injectBombBonusRolls,
@@ -60,8 +25,7 @@ import {
   resolveUniverseFreezeTurn,
   resolveVacancyTurn,
 } from "@/lib/game/turn-lifecycle";
-import type { EngineMoveTarget } from "@/lib/game/engine";
-import type { GameEngineState, PieceState, RollToken } from "@/lib/game/types";
+import type { GameEngineState } from "@/lib/game/types";
 import type { BalanceRuleset } from "./rulesets";
 import { createSimulationRandomStreams, type SimulationRandomStreams } from "./rng";
 import {
@@ -89,6 +53,7 @@ import {
   resolveStackDecision,
   type SimulationDecision,
 } from "./candidate-policy";
+import { resolveAugmentAcquisition } from "./acquisition-policy";
 
 type SimulationOptions = {
   seed: string;
@@ -100,8 +65,6 @@ type SimulationOptions = {
   forcedAcquisitionIndex?: number;
   preserveSelectionRng?: boolean;
 };
-
-type MoveArgs = GameMoveArgs;
 
 type SimulationContext = {
   engine: GameEngineState;
@@ -135,7 +98,6 @@ const UNIVERSE_CENTER_APPROACH_SCORE = new Map<number, number>([
   [17, 45], [16, 90],
   [24, 45], [23, 90],
 ]);
-const LONE_WOLF_EXTRA_ROLL_FUTURE_BONUS = 32;
 
 function nextTokenId(context: SimulationContext, label: string) {
   context.tokenCounter += 1;
@@ -215,7 +177,6 @@ function immediateReplacementId(
     .filter((augment) => augment.id !== "AUG-048" && augment.id !== "AUG-049")
     .filter((augment) => augment.id !== "AUG-053" || playerHasWaitingPiece(context, userId))
     .filter((augment) => augment.id !== "AUG-047" || canReceiveA04(context, eventIndex))
-    .filter((augment) => augment.id !== "AUG-053" || playerHasWaitingPiece(context, userId))
     .filter((augment) => canOffer(augment, phase, ownedIds))
     .filter((augment) => !augment.uniquePerGame || !alreadyClaimedUnique.has(augment.id));
   if (!candidates.length) {
@@ -347,293 +308,6 @@ function applyRawTransitionWithoutTelemetry(
   });
 }
 
-function applyDueAugmentEvents(context: SimulationContext) {
-  let changed = false;
-  const sequence = pickTierSequence(context.seed);
-
-  context.ruleset.augmentEvents.forEach((event, eventIndex) => {
-    if (context.appliedAugmentEvents.has(eventIndex)) return;
-    if (event.afterRound >= context.engine.round) return;
-    if (context.engine.winnerUserId) return;
-
-    const tier = sequence[event.logicalPhase - 1];
-    const baseExcludedIds = context.ruleset.excludedAugmentIdsByLogicalPhase?.[event.logicalPhase] ?? [];
-    const excludedIds = [...baseExcludedIds, ...(canReceiveA04(context, eventIndex) ? [] : ["AUG-047"])];
-    const excludedIdsByUser = Object.fromEntries(context.engine.players.map((player) => [
-      player.userId,
-      player.pieces.some((piece) => piece.status === "WAITING") ? [] : ["AUG-053"],
-    ]));
-    const a04UpgradePendingByUser = Object.fromEntries(context.engine.players.map((player) => [
-      player.userId,
-      Boolean(context.engine.augmentRuntime?.[player.userId]?.a04UpgradeNextAugment),
-    ]));
-    const tierByUser = Object.fromEntries(context.engine.players.map((player) => [
-      player.userId,
-      a04UpgradePendingByUser[player.userId] ? upgradedAugmentTier(tier) : tier,
-    ])) as Record<string, AugmentTier>;
-    const rareSpecialChance = context.ruleset.rareSpecialOfferChancePerEvent;
-    const slotSpecialMaxGameExposure = context.ruleset.specialMaxGameExposureByLogicalPhase?.[event.logicalPhase];
-    const specialChancePerDraw = slotSpecialMaxGameExposure != null
-      ? chancePerDrawForMaxGameExposure(slotSpecialMaxGameExposure, context.engine.players.length)
-      : undefined;
-    const offerOwnedByUser = ownedIdsForOffers(context);
-    let offers = buildPhaseOffers({
-      seed: context.seed,
-      phase: event.logicalPhase,
-      tier,
-      tierByUser,
-      players: context.engine.players.map((player) => ({ userId: player.userId, seat: player.seat })),
-      excludedIdsByUser,
-      ownedByUser: offerOwnedByUser,
-      excludedIds,
-      excludeSpecial: specialChancePerDraw == null && rareSpecialChance != null,
-      specialChancePerDraw,
-    });
-    if (specialChancePerDraw != null) {
-      for (const offer of offers) {
-        offer.offerIds.slice(0, 3).forEach((augmentId, slot) => {
-          if (!SPECIAL_AUGMENT_IDS.has(augmentId)) return;
-          context.specialOffersShown.push({
-            eventIndex,
-            logicalPhase: event.logicalPhase,
-            userId: offer.userId,
-            augmentId,
-            slot,
-          });
-        });
-      }
-    }
-    if (rareSpecialChance != null) {
-      const injected = injectRareSpecialOffer({
-        seed: context.seed,
-        eventIndex,
-        logicalPhase: event.logicalPhase,
-        chance: rareSpecialChance,
-        offers,
-        ownedByUser: context.ownedByUser,
-        excludedIds,
-      });
-      offers = injected.offers;
-      if (injected.shown) context.specialOffersShown.push(injected.shown);
-    }
-
-    for (const offer of offers) {
-      const visible = offer.offerIds.slice(0, 3);
-      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
-      if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);
-      const currentlyEligible = visible.filter((id) => id !== "AUG-053" || playerHasWaitingPiece(context, offer.userId));
-      const numericSeed = Number(context.seed);
-      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
-      const forceEligible = context.forcedAugmentId !== "AUG-053" || playerHasWaitingPiece(context, offer.userId);
-      const shouldForce = Boolean(context.forcedAugmentId)
-        && forceEligible
-        && eventIndex + 1 === (context.forcedAcquisitionIndex ?? 1)
-        && player.seat === forcedSeat;
-      const selectionPool = currentlyEligible.length > 0 ? currentlyEligible : visible;
-      const naturalSelectedId = !shouldForce || context.preserveSelectionRng
-        ? context.rng.augment.pick(selectionPool)
-        : null;
-      const selectedId = shouldForce
-        ? context.forcedAugmentId!
-        : naturalSelectedId!;
-
-      const acquiredId = selectedId === "AUG-048" || selectedId === "AUG-049"
-        ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
-        : selectedId;
-
-      context.ownedByUser[offer.userId] = upgradeOwnedList(context.ownedByUser[offer.userId] ?? [], acquiredId);
-      const acquisitionLifecycle = applyAugmentAcquisitionLifecycle({
-        engine: context.engine,
-        userId: offer.userId,
-        augmentId: acquiredId,
-        ownedByUser: context.ownedByUser,
-        setupsByUser: context.setupsByUser,
-        consumeA04UpgradePending: Boolean(a04UpgradePendingByUser[offer.userId]),
-        randomNext: () => context.rng.effect.next(),
-        randomInt: (maxExclusive) => context.rng.effect.int(maxExclusive),
-      });
-      if (acquisitionLifecycle.immediateTransitionFrom) {
-        const acquisitionNext = canonicalizeRawTransition(
-          context,
-          acquisitionLifecycle.immediateTransitionFrom,
-          acquisitionLifecycle.engine,
-          offer.userId,
-          "augment_event",
-          { acquiredAugmentId: acquiredId },
-        );
-        commitTransition(
-          context,
-          acquisitionLifecycle.immediateTransitionFrom,
-          acquisitionNext,
-          offer.userId,
-          "augment_event",
-        );
-      } else {
-        context.engine = acquisitionLifecycle.engine;
-      }
-
-      context.acquisitions.push({
-        userId: offer.userId,
-        seat: player.seat,
-        augmentId: selectedId,
-        acquisitionIndex: eventIndex + 1,
-        logicalPhase: event.logicalPhase,
-        afterRound: event.afterRound,
-        tier: AUGMENT_BY_ID.get(selectedId)?.tier ?? tier,
-      });
-      if (acquiredId !== selectedId) {
-        context.acquisitions.push({
-          userId: offer.userId,
-          seat: player.seat,
-          augmentId: acquiredId,
-          acquisitionIndex: eventIndex + 1,
-          logicalPhase: event.logicalPhase,
-          afterRound: event.afterRound,
-          tier: AUGMENT_BY_ID.get(acquiredId)?.tier ?? tier,
-        });
-      }
-      assertGameStateInvariants(context.engine, {
-        ownedByUser: context.ownedByUser,
-        setupsByUser: context.setupsByUser,
-        label: `acquire:${acquiredId}:${offer.userId}`,
-      });
-    }
-
-    if (eventIndex === 0 && context.firstAugmentAppliedRound == null) {
-      context.firstAugmentAppliedRound = context.engine.round;
-    }
-    context.appliedAugmentEvents.add(eventIndex);
-    const passiveBefore = structuredClone(context.engine);
-    const passiveAfter = applyCrossTransitionLegacyRules(passiveBefore, context.engine, context);
-    commitTransition(context, passiveBefore, passiveAfter, currentPlayer(passiveBefore).userId, "augment_event");
-    changed = true;
-  });
-
-  return changed;
-}
-
-function maybeUseGachaMachine(context: SimulationContext) {
-  const engine = context.engine;
-  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
-  const actor = currentPlayer(engine);
-  const owned = actorOwned(context, actor.userId);
-  if (!gachaMachineIsReady(engine, actor.userId, owned)) return false;
-
-  const ownCandidates = isForcedRelocationImmune(owned)
-    ? []
-    : actor.pieces
-      .filter((piece) => piece.status === "ON_BOARD" && piece.node != null && piece.node !== 29)
-      .sort((left, right) => left.pathHistory.length - right.pathHistory.length);
-  const opponentCandidates = engine.players
-    .filter((player) => (
-      player.userId !== actor.userId
-      && !isForcedRelocationImmune(actorOwned(context, player.userId))
-    ))
-    .flatMap((player) => player.pieces.map((piece) => ({ player, piece })))
-    .filter(({ piece }) => piece.status === "ON_BOARD" && piece.node != null && piece.node !== 1)
-    .sort((left, right) => right.piece.pathHistory.length - left.piece.pathHistory.length);
-
-  const ownTarget = ownCandidates[0];
-  const opponentTarget = opponentCandidates[0];
-  if (!ownTarget && !opponentTarget) return false;
-
-  const ownValue = ownTarget ? Math.max(0, 18 - ownTarget.pathHistory.length) : -1;
-  const opponentValue = opponentTarget ? opponentTarget.piece.pathHistory.length : -1;
-  const targetUserId = opponentValue > ownValue && opponentTarget ? opponentTarget.player.userId : actor.userId;
-  const targetPiece = opponentValue > ownValue && opponentTarget ? opponentTarget.piece : ownTarget;
-  const desiredNode = targetUserId === actor.userId ? 29 : 1;
-  if (!targetPiece) return false;
-
-  const before = context.engine;
-  const result = applyGachaMachine(
-    before,
-    actor.userId,
-    targetUserId,
-    targetPiece.id,
-    desiredNode,
-    context.ownedByUser,
-    context.rng.effect.next,
-  );
-  const next = canonicalizeRawTransition(
-    context,
-    before,
-    result.engine,
-    actor.userId,
-    "augment_event",
-    { kind: "gacha_machine", augmentId: "AUG-046" },
-  );
-  commitTransition(context, before, next, actor.userId, "augment_event");
-  return true;
-}
-
-function maybeUseMarginExit(_context: SimulationContext) {
-  return false;
-}
-
-function maybeReturnMargin(_context: SimulationContext, _engine: GameEngineState, _userId: string) {
-  return null;
-}
-
-function maybeUseWormhole(context: SimulationContext) {
-  const engine = context.engine;
-  if (engine.stage !== "AWAITING_ROLL" || engine.pendingRolls[0] !== "BASIC") return false;
-  const actor = currentPlayer(engine);
-  const owned = context.ownedByUser[actor.userId] ?? [];
-  if (!wormholeIsOpen(engine, actor.userId, owned)) return false;
-
-  const groups = new Map<string, PieceState[]>();
-  for (const piece of actor.pieces) {
-    if (piece.status !== "ON_BOARD" || piece.node == null) continue;
-    const list = groups.get(piece.groupId) ?? [];
-    list.push(piece);
-    groups.set(piece.groupId, list);
-  }
-
-  if (!groups.size) {
-    context.engine = expireWormholeForCurrentRound(engine, actor.userId, owned);
-    return false;
-  }
-
-  if (engine.results.length > 0 && groups.size === 1) {
-    const onlyGroupId = groups.keys().next().value as string | undefined;
-    const hasCompatibleWaitingPiece = actor.pieces.some((piece) => (
-      piece.status === "WAITING"
-      && isGroupUsableWithAugments(engine, actor.userId, piece.groupId, owned, actorSetups(context, actor.userId))
-    )) && engine.results.some((result) => (
-      !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face)
-    ));
-    const hasMarginReturn = owned.includes("AUG-059")
-      && actor.pieces.some((piece) => piece.status === "MARGIN")
-      && engine.results.some((result) => !result.numericPool && ["DO", "GAE", "GEOL", "YUT", "MO"].includes(result.face));
-    if (onlyGroupId && !hasCompatibleWaitingPiece && !hasMarginReturn) {
-      context.engine = expireWormholeForCurrentRound(engine, actor.userId, owned);
-      return false;
-    }
-  }
-
-  const selected = [...groups.entries()].sort((left, right) => {
-    const leftProgress = Math.max(...left[1].map((piece) => piece.pathHistory.length));
-    const rightProgress = Math.max(...right[1].map((piece) => piece.pathHistory.length));
-    if (leftProgress !== rightProgress) return leftProgress - rightProgress;
-    if (left[1].length !== right[1].length) return right[1].length - left[1].length;
-    return left[0].localeCompare(right[0]);
-  })[0];
-  if (!selected) return false;
-
-  const before = structuredClone(engine);
-  const rawNext = applyWormholeTurn(engine, actor.userId, selected[0], owned);
-  const next = canonicalizeRawTransition(
-    context,
-    before,
-    rawNext,
-    actor.userId,
-    "wormhole",
-    { groupId: selected[0] },
-  );
-  commitTransition(context, before, next, actor.userId, "wormhole");
-  return true;
-}
-
 function actorOwned(context: SimulationContext, userId: string) {
   return context.ownedByUser[userId] ?? [];
 }
@@ -721,6 +395,217 @@ function outcomeScore(context: SimulationContext, before: GameEngineState, after
   return base + capturedEnemyPieceCount(before, after, userId) * 85;
 }
 
+function applyDueAugmentEvents(context: SimulationContext) {
+  let changed = false;
+  const sequence = pickTierSequence(context.seed);
+
+  context.ruleset.augmentEvents.forEach((event, eventIndex) => {
+    if (context.appliedAugmentEvents.has(eventIndex)) return;
+    if (event.afterRound >= context.engine.round) return;
+    if (context.engine.winnerUserId) return;
+
+    const tier = sequence[event.logicalPhase - 1];
+    const baseExcludedIds = context.ruleset.excludedAugmentIdsByLogicalPhase?.[event.logicalPhase] ?? [];
+    const excludedIds = [...baseExcludedIds, ...(canReceiveA04(context, eventIndex) ? [] : ["AUG-047"])];
+    const excludedIdsByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      player.pieces.some((piece) => piece.status === "WAITING") ? [] : ["AUG-053"],
+    ]));
+    const a04UpgradePendingByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      Boolean(context.engine.augmentRuntime?.[player.userId]?.a04UpgradeNextAugment),
+    ]));
+    const tierByUser = Object.fromEntries(context.engine.players.map((player) => [
+      player.userId,
+      a04UpgradePendingByUser[player.userId] ? upgradedAugmentTier(tier) : tier,
+    ])) as Record<string, AugmentTier>;
+    const rareSpecialChance = context.ruleset.rareSpecialOfferChancePerEvent;
+    const slotSpecialMaxGameExposure = context.ruleset.specialMaxGameExposureByLogicalPhase?.[event.logicalPhase];
+    const specialChancePerDraw = slotSpecialMaxGameExposure != null
+      ? chancePerDrawForMaxGameExposure(slotSpecialMaxGameExposure, context.engine.players.length)
+      : undefined;
+    const offerOwnedByUser = ownedIdsForOffers(context);
+    let offers = buildPhaseOffers({
+      seed: context.seed,
+      phase: event.logicalPhase,
+      tier,
+      tierByUser,
+      players: context.engine.players.map((player) => ({ userId: player.userId, seat: player.seat })),
+      excludedIdsByUser,
+      ownedByUser: offerOwnedByUser,
+      excludedIds,
+      excludeSpecial: specialChancePerDraw == null && rareSpecialChance != null,
+      specialChancePerDraw,
+    });
+    if (specialChancePerDraw != null) {
+      for (const offer of offers) {
+        offer.offerIds.slice(0, 3).forEach((augmentId, slot) => {
+          if (!SPECIAL_AUGMENT_IDS.has(augmentId)) return;
+          context.specialOffersShown.push({
+            eventIndex,
+            logicalPhase: event.logicalPhase,
+            userId: offer.userId,
+            augmentId,
+            slot,
+          });
+        });
+      }
+    }
+    if (rareSpecialChance != null) {
+      const injected = injectRareSpecialOffer({
+        seed: context.seed,
+        eventIndex,
+        logicalPhase: event.logicalPhase,
+        chance: rareSpecialChance,
+        offers,
+        ownedByUser: context.ownedByUser,
+        excludedIds,
+      });
+      offers = injected.offers;
+      if (injected.shown) context.specialOffersShown.push(injected.shown);
+    }
+
+    for (const offer of offers) {
+      const visible = offer.offerIds.slice(0, 3);
+      const player = context.engine.players.find((candidate) => candidate.userId === offer.userId);
+      if (!player) throw new Error(`Missing simulation player ${offer.userId}.`);
+      const currentlyEligible = visible.filter((id) => id !== "AUG-053" || playerHasWaitingPiece(context, offer.userId));
+      const selectionPool = currentlyEligible.length > 0 ? currentlyEligible : visible;
+      if (!selectionPool.length) throw new Error(`Missing augment selection candidates for ${offer.userId}.`);
+
+      const numericSeed = Number(context.seed);
+      const forcedSeat = (Number.isFinite(numericSeed) ? numericSeed : 0) % context.engine.players.length + 1;
+      const forceEligible = context.forcedAugmentId !== "AUG-053" || playerHasWaitingPiece(context, offer.userId);
+      const shouldForce = Boolean(context.forcedAugmentId)
+        && forceEligible
+        && eventIndex + 1 === (context.forcedAcquisitionIndex ?? 1)
+        && player.seat === forcedSeat;
+
+      const fallbackSelectedId = shouldForce && !context.preserveSelectionRng
+        ? context.forcedAugmentId!
+        : context.rng.augment.pick(selectionPool);
+      const acquisitionDecision = resolveAugmentAcquisition({
+        engine: context.engine,
+        userId: offer.userId,
+        selectionPool,
+        fallbackSelectedId,
+        forcedSelectedId: shouldForce ? context.forcedAugmentId! : undefined,
+        ownedByUser: context.ownedByUser,
+        setupsByUser: context.setupsByUser,
+        scoreState: (engine, userId, ownedByUser, setupsByUser) => playerPositionScore(
+          engine,
+          userId,
+          ownedByUser[userId] ?? [],
+          setupsByUser[userId] ?? {},
+        ),
+      });
+      const selectedId = acquisitionDecision.selectedId;
+      const acquiredId = selectedId === "AUG-048" || selectedId === "AUG-049"
+        ? immediateReplacementId(context, offer.userId, event.logicalPhase, eventIndex, selectedId)
+        : selectedId;
+
+      const acquiredDecision = acquiredId === selectedId
+        ? acquisitionDecision
+        : resolveAugmentAcquisition({
+            engine: context.engine,
+            userId: offer.userId,
+            selectionPool: [acquiredId],
+            fallbackSelectedId: acquiredId,
+            forcedSelectedId: acquiredId,
+            ownedByUser: context.ownedByUser,
+            setupsByUser: context.setupsByUser,
+            scoreState: (engine, userId, ownedByUser, setupsByUser) => playerPositionScore(
+              engine,
+              userId,
+              ownedByUser[userId] ?? [],
+              setupsByUser[userId] ?? {},
+            ),
+          });
+
+      context.ownedByUser[offer.userId] = upgradeOwnedList(context.ownedByUser[offer.userId] ?? [], acquiredId);
+      if (acquiredDecision.pieceId && requiresPieceSetup(acquiredId)) {
+        context.setupsByUser[offer.userId] ??= {};
+        context.setupsByUser[offer.userId][acquiredId] = { pieceId: acquiredDecision.pieceId };
+      }
+      const acquisitionLifecycle = applyAugmentAcquisitionLifecycle({
+        engine: context.engine,
+        userId: offer.userId,
+        augmentId: acquiredId,
+        ownedByUser: context.ownedByUser,
+        setupsByUser: context.setupsByUser,
+        consumeA04UpgradePending: Boolean(a04UpgradePendingByUser[offer.userId]),
+        acquisitionChoice: acquiredDecision.pieceId ? { pieceId: acquiredDecision.pieceId } : undefined,
+        randomNext: () => context.rng.effect.next(),
+        randomInt: (maxExclusive) => context.rng.effect.int(maxExclusive),
+      });
+      if (acquisitionLifecycle.immediateTransitionFrom) {
+        const acquisitionNext = canonicalizeRawTransition(
+          context,
+          acquisitionLifecycle.immediateTransitionFrom,
+          acquisitionLifecycle.engine,
+          offer.userId,
+          "augment_event",
+          { acquiredAugmentId: acquiredId },
+        );
+        commitTransition(
+          context,
+          acquisitionLifecycle.immediateTransitionFrom,
+          acquisitionNext,
+          offer.userId,
+          "augment_event",
+        );
+      } else {
+        context.engine = acquisitionLifecycle.engine;
+      }
+
+      context.acquisitions.push({
+        userId: offer.userId,
+        seat: player.seat,
+        augmentId: selectedId,
+        acquisitionIndex: eventIndex + 1,
+        logicalPhase: event.logicalPhase,
+        afterRound: event.afterRound,
+        tier: AUGMENT_BY_ID.get(selectedId)?.tier ?? tier,
+      });
+      if (acquiredId !== selectedId) {
+        context.acquisitions.push({
+          userId: offer.userId,
+          seat: player.seat,
+          augmentId: acquiredId,
+          acquisitionIndex: eventIndex + 1,
+          logicalPhase: event.logicalPhase,
+          afterRound: event.afterRound,
+          tier: AUGMENT_BY_ID.get(acquiredId)?.tier ?? tier,
+        });
+      }
+      assertGameStateInvariants(context.engine, {
+        ownedByUser: context.ownedByUser,
+        setupsByUser: context.setupsByUser,
+        label: `acquire:${acquiredId}:${offer.userId}`,
+      });
+    }
+
+    if (eventIndex === 0 && context.firstAugmentAppliedRound == null) {
+      context.firstAugmentAppliedRound = context.engine.round;
+    }
+    context.appliedAugmentEvents.add(eventIndex);
+    const passiveBefore = structuredClone(context.engine);
+    const passiveAfter = applyCrossTransitionLegacyRules(passiveBefore, context.engine, context);
+    commitTransition(context, passiveBefore, passiveAfter, currentPlayer(passiveBefore).userId, "augment_event");
+    changed = true;
+  });
+
+  return changed;
+}
+
+function maybeUseMarginExit(_context: SimulationContext) {
+  return false;
+}
+
+function maybeReturnMargin(_context: SimulationContext, _engine: GameEngineState, _userId: string) {
+  return null;
+}
+
 function candidatePolicyContext(context: SimulationContext) {
   return {
     ownedByUser: context.ownedByUser,
@@ -747,265 +632,6 @@ function applyCandidateRollTelemetry(context: SimulationContext, userId: string,
   if (decision.rollLifecycle?.s16Occurred) {
     context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
   }
-}
-
-function groupRepresentativesForBot(engine: GameEngineState, userId: string, owned: string[]) {
-  const player = engine.players.find((candidate) => candidate.userId === userId);
-  if (!player) return [];
-  const seen = new Set<string>();
-  const allowFinished = owned.includes("AUG-031");
-  return player.pieces.filter((piece) => {
-    if (seen.has(piece.groupId)) return false;
-    if (piece.status === "WORMHOLE" || piece.status === "MARGIN") return false;
-    if (piece.status === "FINISHED" && !allowFinished) return false;
-    seen.add(piece.groupId);
-    return true;
-  });
-}
-
-function moveArgsForTarget(groupId: string, result: RollToken, target: EngineMoveTarget, moonwalk: boolean): MoveArgs {
-  const args: MoveArgs = { groupId, resultId: result.id };
-  if (!moonwalk && result.face === "BACKDO") {
-    if (target.node != null) args.backwardTarget = target.node;
-    return args;
-  }
-  if (target.kind === "CHASE" && target.node != null) args.forwardTarget = target.node;
-  else if (target.path) args.forwardPath = [...target.path];
-  return args;
-}
-
-function bestMove(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  const setups = actorSetups(context, userId);
-  const moveOwned = moveOwnedIdsForAthlete(owned);
-  const candidates: Array<{ next: GameEngineState; score: number }> = [];
-  const legalOptions = legalMoveOptionsWithAugments(
-    engine,
-    userId,
-    owned,
-    setups,
-    context.ownedByUser,
-    moveOwned,
-  );
-
-  for (const option of legalOptions) {
-    try {
-      const next = executeMoveAction(
-        context,
-        engine,
-        userId,
-        moveArgsForTarget(option.groupId, option.result, option.target, owned.includes("AUG-031")),
-      );
-      candidates.push({
-        next,
-        score: outcomeScore(context, engine, next, userId) + context.rng.decision.next() * 0.001,
-      });
-    } catch {
-      // The engine enumerates legal actions; execution failures are kept out of bot scoring.
-    }
-  }
-
-  candidates.sort((left, right) => right.score - left.score);
-  return candidates[0]?.next ?? null;
-}
-
-function maybeSaveTomorrow(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  if (!owned.includes("AUG-028") || engine.stage !== "MOVING") return null;
-  const runtime = engine.augmentRuntime?.[userId];
-  if (runtime?.tomorrowStoredResult || runtime?.tomorrowSavedAtTurnNumber === engine.turnNumber) return null;
-  const candidates = engine.results.filter((result) => !result.numericPool && !result.id.startsWith("tomorrow:"));
-  if (candidates.length < 2) return null;
-
-  const selected = [...candidates].sort((left, right) => left.finalSteps - right.finalSteps)[0];
-  if (!selected) return null;
-  const before = structuredClone(engine);
-  const next = saveResultForTomorrow(engine, userId, selected.id, owned);
-  return finalizeAction(before, next, userId, context, "save_result");
-}
-
-function maybeSplitNumberOne(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  if (!owned.includes("AUG-024") || owned.includes("AUG-063") || engine.stage !== "MOVING") return null;
-  if (engine.results.some((result) => result.numericBatchId)) return null;
-  if (groupRepresentativesForBot(engine, userId, owned).length < 2) return null;
-  const result = [...engine.results]
-    .filter((candidate) => candidate.face !== "BACKDO" && !candidate.numericAllocated && !candidate.numericPool && candidate.finalSteps >= 4)
-    .sort((left, right) => right.finalSteps - left.finalSteps)[0];
-  if (!result) return null;
-
-  const firstSteps = Math.max(1, Math.floor(result.finalSteps / 2));
-  const before = structuredClone(engine);
-  const next = splitNumberResult(engine, userId, result.id, firstSteps, owned);
-  return finalizeAction(before, next, userId, context, "split_number");
-}
-
-function maybeAllocateNumberPool(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  if (!owned.includes("AUG-063") || engine.stage !== "MOVING") return null;
-  const pool = engine.results.find((result) => result.numericPool);
-  if (!pool) return null;
-  const steps = Math.min(5, pool.finalSteps);
-  const before = structuredClone(engine);
-  const next = allocateNumberPool(engine, userId, steps, owned);
-  return finalizeAction(before, next, userId, context, "allocate_number_pool");
-}
-
-function maybeUseGrandUnity(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  if (!owned.includes("AUG-038") || owned.includes("AUG-017") || engine.stage !== "AWAITING_ROLL") return null;
-  if (engine.augmentRuntime?.[userId]?.grandUnityUsed) return null;
-  const player = engine.players.find((candidate) => candidate.userId === userId);
-  if (!player) return null;
-  const groups = new Map<string, PieceState[]>();
-  for (const piece of player.pieces) {
-    if (piece.status !== "ON_BOARD" || piece.node == null) continue;
-    const list = groups.get(piece.groupId) ?? [];
-    list.push(piece);
-    groups.set(piece.groupId, list);
-  }
-  if (groups.size < 3) return null;
-  const anchor = [...groups.values()].sort((left, right) => {
-    const leftProgress = Math.max(...left.map((piece) => piece.pathHistory.length));
-    const rightProgress = Math.max(...right.map((piece) => piece.pathHistory.length));
-    return rightProgress - leftProgress;
-  })[0]?.[0];
-  if (!anchor) return null;
-  return executeGrandUnityAction(context, engine, userId, anchor.groupId);
-}
-
-function resolveRollChoice(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  const pending = engine.pendingRollChoice;
-  if (!pending) throw new Error("ROLL_CHOICE without pending choice.");
-  const before = structuredClone(engine);
-
-  if (pending.kind === "DUAL") {
-    const scoreFace = (face: (typeof pending.faces)[number]) => (
-      baseStepsForFace(face) + (canGrantFaceExtraRoll(engine, userId, face, owned) ? 3 : 0)
-    );
-    const choiceIndex = scoreFace(pending.faces[1]) > scoreFace(pending.faces[0]) ? 1 : 0;
-    const next = resolveDualRollChoice(engine, choiceIndex, nextTokenId(context, "dual"), owned, actorSetups(context, userId));
-    return finalizeAction(before, next, userId, context, "choose_roll");
-  }
-
-  return executeDoRerollLifecycle({
-    context,
-    engine,
-    userId,
-    randomRoll: context.rng.roll.next,
-    nextTokenId: (label) => nextTokenId(context, label),
-  });
-}
-
-function executeRoll(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const owned = actorOwned(context, userId);
-  const godHandFace = engine.pendingRolls[0] === "BASIC"
-    && owned.includes("AUG-044")
-    && godHandChargeCount(engine, userId, owned) > 0
-      ? "MO" as const
-      : null;
-
-  const result = executeRollLifecycle({
-    context,
-    engine,
-    userId,
-    randomRoll: context.rng.roll.next,
-    randomEffect: context.rng.effect.next,
-    nextTokenId: (label) => nextTokenId(context, label),
-    godHandFace,
-  });
-  if (result.s16Checked) {
-    context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;
-  }
-  if (result.s16Occurred) {
-    context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
-  }
-  return result.engine;
-}
-
-function resolveCaptureChoice(context: SimulationContext, engine: GameEngineState) {
-  const pending = engine.pendingCaptureChoice;
-  const decision = pending?.decisions[0];
-  if (!pending || !decision) throw new Error("CAPTURE_CHOICE without decision.");
-  const chooserUserId = decision.chooserUserId;
-  const attackerUserId = pending.attackerUserId;
-  let choice: { pieceId?: string | null; targetKey?: string | null } = {};
-
-  if (decision.kind === "INSURANCE") {
-    const setups = actorSetups(context, chooserUserId);
-    const protectedIds = referencedSetupPieceIds(setups);
-    choice = { pieceId: decision.pieceIds.find((id) => !protectedIds.has(id)) ?? decision.pieceIds[0] ?? null };
-  } else {
-    const target = [...decision.targets].sort((left, right) => right.pieceIds.length - left.pieceIds.length)[0];
-    choice = { targetKey: target?.key ?? null };
-  }
-
-  const before = structuredClone(engine);
-  const next = applyCaptureChoice(engine, chooserUserId, choice, context.ownedByUser);
-  return finalizeAction(before, next, chooserUserId, context, "capture_choice", attackerUserId);
-}
-
-function resolveRelocationChoice(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const pending = engine.pendingRelocationChoice;
-  const current = pending?.opportunities[0];
-  if (!pending || !current) throw new Error("RELOCATION_CHOICE without opportunity.");
-  const choices: Array<string | null> = [null, ...current.candidateGroupIds];
-  let best: { next: GameEngineState; score: number } | null = null;
-  for (const choice of choices) {
-    try {
-      const next = executeRelocationAction(context, engine, userId, choice);
-      const score = outcomeScore(context, engine, next, userId) + (choice ? 2 : 0);
-      if (!best || score > best.score) best = { next, score };
-    } catch {
-      // Ignore invalid candidate.
-    }
-  }
-  if (!best) throw new Error("No valid relocation choice.");
-  return best.next;
-}
-
-function resolveStackChoice(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const choices: Array<{ next: GameEngineState; score: number; actionKind: "stack" | "ally_capture" }> = [];
-  for (const stack of [false, true] as const) {
-    try {
-      const next = executeStackAction(context, engine, userId, stack);
-      choices.push({ next, score: outcomeScore(context, engine, next, userId) + (stack ? 1 : 0), actionKind: "stack" });
-    } catch {
-      // Ignore invalid candidate.
-    }
-  }
-
-  if (actorOwned(context, userId).includes("AUG-043")) {
-    try {
-      const before = structuredClone(engine);
-      const captured = applyLoneWolfAllyCapture(engine, actorOwned(context, userId));
-      const next = finalizeAction(before, captured, userId, context, "ally_capture");
-      choices.push({ next, score: outcomeScore(context, engine, next, userId) + LONE_WOLF_EXTRA_ROLL_FUTURE_BONUS, actionKind: "ally_capture" });
-    } catch {
-      // No valid allied capture.
-    }
-  }
-
-  choices.sort((left, right) => right.score - left.score);
-  if (!choices[0]) throw new Error("No valid stack choice.");
-  return choices[0];
-}
-
-function resolveSplitChoice(context: SimulationContext, engine: GameEngineState, userId: string) {
-  const pending = engine.pendingSplitChoice;
-  if (!pending) throw new Error("SPLIT_CHOICE without pending split.");
-  const owned = actorOwned(context, userId);
-  const before = structuredClone(engine);
-
-  if (owned.includes("AUG-033")) {
-    const next = applySelfRelianceSplit(engine, userId, null, owned);
-    return finalizeAction(before, next, userId, context, "split");
-  }
-
-  const partition = pending.pieceIds.map((pieceId) => [pieceId]);
-  const next = applySelfRelianceSplit(engine, userId, partition, owned);
-  return finalizeAction(before, next, userId, context, "split");
 }
 
 function stepGame(context: SimulationContext) {
@@ -1168,8 +794,7 @@ function stepGame(context: SimulationContext) {
   }
 
   if (context.engine.stage === "CAPTURE_CHOICE") {
-    const before = context.engine;
-    const decision = resolveCaptureDecision(policy, before);
+    const decision = resolveCaptureDecision(policy, context.engine);
     if (!decision) throw new Error(`No CandidateAction for CAPTURE_CHOICE at turn ${context.engine.turnNumber}.`);
     commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
