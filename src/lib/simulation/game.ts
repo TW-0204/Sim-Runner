@@ -79,6 +79,16 @@ import {
 } from "./triggers";
 import { injectRareSpecialOffer, type SpecialOfferShown } from "./special-offers";
 import { BALANCE_BOT_VERSION, type AugmentAcquisition, type SimulationGameResult } from "./types";
+import {
+  resolveAwaitingRollDecision,
+  resolveCaptureDecision,
+  resolveMovingDecision,
+  resolveRelocationDecision,
+  resolveRollChoiceDecision,
+  resolveSplitDecision,
+  resolveStackDecision,
+  type SimulationDecision,
+} from "./candidate-policy";
 
 type SimulationOptions = {
   seed: string;
@@ -649,6 +659,7 @@ function playerPositionScore(engine: GameEngineState, userId: string, owned: str
   for (const piece of player.pieces) {
     if (piece.status === "FINISHED") score += 300;
     else if (piece.status === "ON_BOARD") score += 45 + piece.pathHistory.length * 1.5;
+    else if (piece.status === "WORMHOLE") score += 72;
     else if (piece.hasEntered) score += 4;
   }
 
@@ -681,6 +692,9 @@ function playerPositionScore(engine: GameEngineState, userId: string, owned: str
     if (representative?.status === "ON_BOARD") score += representative.pathHistory.length * 4;
   }
 
+  const stored = engine.augmentRuntime?.[userId]?.tomorrowStoredResult;
+  if (stored) score += Math.max(0, stored.finalSteps) * 14 + 8;
+
   if (engine.currentSeat === player.seat) {
     score += engine.pendingRolls.length * 12;
     score += engine.results.reduce((sum, result) => sum + Math.max(0, result.finalSteps), 0) * 0.5;
@@ -705,6 +719,34 @@ function capturedEnemyPieceCount(before: GameEngineState, after: GameEngineState
 function outcomeScore(context: SimulationContext, before: GameEngineState, after: GameEngineState, userId: string) {
   const base = playerPositionScore(after, userId, actorOwned(context, userId), actorSetups(context, userId));
   return base + capturedEnemyPieceCount(before, after, userId) * 85;
+}
+
+function candidatePolicyContext(context: SimulationContext) {
+  return {
+    ownedByUser: context.ownedByUser,
+    setupsByUser: context.setupsByUser,
+    seed: context.seed,
+    randomRoll: context.rng.roll.next,
+    randomEffect: context.rng.effect.next,
+    nextTokenId: (label: string) => nextTokenId(context, label),
+    scoreTransition: (before: GameEngineState, after: GameEngineState, userId: string) => outcomeScore(context, before, after, userId),
+    canonicalizeActual: (
+      before: GameEngineState,
+      after: GameEngineState,
+      actorUserId: string,
+      actionKind: SimulationActionKind,
+      event: Readonly<Record<string, unknown>> = {},
+    ) => canonicalizeRawTransition(context, before, after, actorUserId, actionKind, event),
+  };
+}
+
+function applyCandidateRollTelemetry(context: SimulationContext, userId: string, decision: SimulationDecision) {
+  if (decision.rollLifecycle?.s16Checked) {
+    context.s16BasicRollsByUser[userId] = (context.s16BasicRollsByUser[userId] ?? 0) + 1;
+  }
+  if (decision.rollLifecycle?.s16Occurred) {
+    context.s16NakByUser[userId] = (context.s16NakByUser[userId] ?? 0) + 1;
+  }
 }
 
 function groupRepresentativesForBot(engine: GameEngineState, userId: string, owned: string[]) {
@@ -1066,61 +1108,38 @@ function stepGame(context: SimulationContext) {
 
   const actor = currentPlayer(context.engine);
   const userId = actor.userId;
+  const policy = candidatePolicyContext(context);
 
   if (context.engine.stage === "AWAITING_ROLL") {
-    if (maybeUseGachaMachine(context)) return;
-    if (maybeUseWormhole(context)) return;
     if (maybeUseMarginExit(context)) return;
     prepareBasicRollAugments(context.engine, userId, actorOwned(context, userId));
-    const before = context.engine;
-    const grandUnity = maybeUseGrandUnity(context, before, userId);
-    const next = grandUnity ?? executeRoll(context, before, userId);
-    commitTransition(context, before, next, userId, grandUnity ? "grand_unity" : "roll");
+    const decision = resolveAwaitingRollDecision(policy, context.engine, userId);
+    if (!decision) throw new Error(`No CandidateAction for AWAITING_ROLL at turn ${context.engine.turnNumber}.`);
+    context.engine = decision.before;
+    applyCandidateRollTelemetry(context, userId, decision);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "ROLL_CHOICE") {
-    const before = context.engine;
-    const actionKind: SimulationActionKind = before.pendingRollChoice?.kind === "DO_REROLL" ? "reroll_do" : "choose_roll";
-    const next = resolveRollChoice(context, before, userId);
-    commitTransition(context, before, next, userId, actionKind);
+    const decision = resolveRollChoiceDecision(policy, context.engine, userId);
+    if (!decision) throw new Error(`No CandidateAction for ROLL_CHOICE at turn ${context.engine.turnNumber}.`);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "MOVING") {
     context.engine = normalizeNumberPool(context.engine, userId, actorOwned(context, userId));
 
-    let before = context.engine;
+    const before = context.engine;
     const marginReturn = maybeReturnMargin(context, before, userId);
     if (marginReturn) {
       commitTransition(context, before, marginReturn, userId, "margin_return");
       return;
     }
 
-    before = context.engine;
-    const saved = maybeSaveTomorrow(context, before, userId);
-    if (saved) {
-      commitTransition(context, before, saved, userId, "save_result");
-      return;
-    }
-
-    before = context.engine;
-    const split = maybeSplitNumberOne(context, before, userId);
-    if (split) {
-      commitTransition(context, before, split, userId, "split_number");
-      return;
-    }
-
-    before = context.engine;
-    const allocated = maybeAllocateNumberPool(context, before, userId);
-    if (allocated) {
-      commitTransition(context, before, allocated, userId, "allocate_number_pool");
-      return;
-    }
-
-    before = context.engine;
-    const next = bestMove(context, before, userId);
-    if (!next) {
+    const decision = resolveMovingDecision(policy, before, userId);
+    if (!decision) {
       const owned = actorOwned(context, userId);
       const discarded = discardMovementResultsWhenNoLegalMove(
         before,
@@ -1142,37 +1161,38 @@ function stepGame(context: SimulationContext) {
         commitTransition(context, before, finalizedDiscard, userId, "move");
         return;
       }
-      throw new Error(`Engine exposed legal moves that the simulator could not execute for ${userId} at turn ${context.engine.turnNumber}.`);
+      throw new Error(`Engine exposed no CandidateAction for ${userId} at turn ${context.engine.turnNumber}.`);
     }
-    commitTransition(context, before, next, userId, "move");
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "CAPTURE_CHOICE") {
     const before = context.engine;
-    const next = resolveCaptureChoice(context, before);
-    commitTransition(context, before, next, userId, "capture_choice");
+    const decision = resolveCaptureDecision(policy, before);
+    if (!decision) throw new Error(`No CandidateAction for CAPTURE_CHOICE at turn ${context.engine.turnNumber}.`);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "RELOCATION_CHOICE") {
-    const before = context.engine;
-    const next = resolveRelocationChoice(context, before, userId);
-    commitTransition(context, before, next, userId, "relocate");
+    const decision = resolveRelocationDecision(policy, context.engine, userId);
+    if (!decision) throw new Error(`No CandidateAction for RELOCATION_CHOICE at turn ${context.engine.turnNumber}.`);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "STACK_CHOICE") {
-    const before = context.engine;
-    const resolved = resolveStackChoice(context, before, userId);
-    commitTransition(context, before, resolved.next, userId, resolved.actionKind);
+    const decision = resolveStackDecision(policy, context.engine, userId);
+    if (!decision) throw new Error(`No CandidateAction for STACK_CHOICE at turn ${context.engine.turnNumber}.`);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
   if (context.engine.stage === "SPLIT_CHOICE") {
-    const before = context.engine;
-    const next = resolveSplitChoice(context, before, userId);
-    commitTransition(context, before, next, userId, "split");
+    const decision = resolveSplitDecision(policy, context.engine, userId);
+    if (!decision) throw new Error(`No CandidateAction for SPLIT_CHOICE at turn ${context.engine.turnNumber}.`);
+    commitTransition(context, decision.before, decision.engine, userId, decision.actionKind);
     return;
   }
 
