@@ -1,8 +1,16 @@
 import { dispatchAllAugmentHooks } from "@/lib/augments/runtime-registry";
-import { applyGodHandRoll, beginRollFlow, godHandChargeCount, rerollDoResult } from "./roll-flow";
 import { castYut } from "./roll";
+import {
+  applyGodHandRoll,
+  beginRollFlow,
+  godHandChargeCount,
+  rerollDoResult,
+} from "./roll-flow";
 import { resolveS16Nak } from "./turn-lifecycle";
-import { finalizeAction, type GameActionContext } from "./action-lifecycle";
+import {
+  finalizeAction,
+  type GameActionContext,
+} from "./action-lifecycle";
 import type { GameEngineState, RollFace } from "./types";
 
 export type RollLifecycleInput = {
@@ -12,7 +20,7 @@ export type RollLifecycleInput = {
   randomRoll: () => number;
   randomEffect: () => number;
   nextTokenId: (label: string) => string;
-  /** Active player policy chooses whether to spend AUG-044 and which face to request. */
+  /** CandidateAction chooses whether to spend AUG-044 and which face to request. */
   godHandFace?: RollFace | null;
 };
 
@@ -36,8 +44,10 @@ function withSeededMathRandom<T>(random: () => number, callback: () => T): T {
 /**
  * Canonical execution boundary for a pending roll.
  *
- * The caller may choose optional active decisions (currently AUG-044 God Hand), but all
- * automatic roll rules and before/after roll hooks are owned by the game layer.
+ * This layer executes the action selected by the policy. It does not choose between
+ * natural roll, AUG-044 God Hand faces, or any other active option. Keeping policy
+ * out of the lifecycle prevents a CandidateAction decision from being overridden
+ * by a second hidden decision inside the game engine.
  */
 export function executeRollLifecycle({
   context,
@@ -132,7 +142,10 @@ export type DoRerollLifecycleInput = {
   nextTokenId: (label: string) => string;
 };
 
-/** AUG-012's actual rethrow uses the same roll hook boundary as a normal roll. */
+/**
+ * Execute AUG-012's actual rethrow. The decision between keep and reroll belongs
+ * exclusively to CandidateAction; this function consumes RNG only after reroll wins.
+ */
 export function executeDoRerollLifecycle({
   context,
   engine: engineInput,
@@ -143,7 +156,7 @@ export function executeDoRerollLifecycle({
   const before = structuredClone(engineInput);
   const owned = context.ownedByUser[userId] ?? [];
   const setups = context.setupsByUser[userId] ?? {};
-  let engine = dispatchAllAugmentHooks("beforeRoll", {
+  const engine = dispatchAllAugmentHooks("beforeRoll", {
     engine: structuredClone(engineInput),
     before,
     actorUserId: userId,
@@ -152,6 +165,7 @@ export function executeDoRerollLifecycle({
     actionKind: "reroll_do",
     event: { source: "DO_REROLL" },
   });
+
   const face = castYut(randomRoll);
   let next = rerollDoResult(engine, face, nextTokenId("do-reroll"), owned, setups);
   next = dispatchAllAugmentHooks("afterRoll", {

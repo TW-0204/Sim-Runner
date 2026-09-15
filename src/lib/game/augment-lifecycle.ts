@@ -69,14 +69,39 @@ function maybeDeclareSourceWinnerAfterTransfer(
   engine.lastAction = `${player.displayName}: 배반 후 남은 현재 말이 모두 완주되어 승리!`;
 }
 
+function betrayalRandomForSelectedPiece(
+  engine: GameEngineState,
+  sourceUserId: string,
+  sourcePieceId: string | undefined,
+  random: () => number,
+) {
+  if (!sourcePieceId) return random;
+  const source = engine.players.find((player) => player.userId === sourceUserId);
+  const waiting = source?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
+  const index = waiting.findIndex((piece) => piece.id === sourcePieceId);
+  if (index < 0) throw new Error("배반으로 넘길 선택 말이 대기 상태가 아닙니다.");
+  let firstCall = true;
+  return () => {
+    if (!firstCall) return random();
+    firstCall = false;
+    random();
+    return Math.min(0.999999999999, (index + 0.5) / waiting.length);
+  };
+}
+
 export function applyBetrayalAcquisitionLifecycle(
   engineInput: GameEngineState,
   sourceUserId: string,
   ownedByUser: Record<string, string[]>,
   setupsByUser: SetupsByUser,
   random: () => number = Math.random,
+  sourcePieceId?: string,
 ) {
-  const transfer = applyBetrayalTransfer(engineInput, sourceUserId, random);
+  const transfer = applyBetrayalTransfer(
+    engineInput,
+    sourceUserId,
+    betrayalRandomForSelectedPiece(engineInput, sourceUserId, sourcePieceId, random),
+  );
   normalizeBetrayalTransfer(
     transfer.engine,
     sourceUserId,
@@ -99,6 +124,7 @@ export type AugmentAcquisitionLifecycleInput = {
   ownedByUser: Record<string, string[]>;
   setupsByUser: SetupsByUser;
   consumeA04UpgradePending?: boolean;
+  acquisitionChoice?: { pieceId?: string };
   randomNext?: () => number;
   randomInt?: (maxExclusive: number) => number;
 };
@@ -122,6 +148,7 @@ export function applyAugmentAcquisitionLifecycle({
   ownedByUser,
   setupsByUser,
   consumeA04UpgradePending = false,
+  acquisitionChoice,
   randomNext = Math.random,
   randomInt = (maxExclusive) => Math.min(maxExclusive - 1, Math.floor(Math.random() * maxExclusive)),
 }: AugmentAcquisitionLifecycleInput): AugmentAcquisitionLifecycleResult {
@@ -162,7 +189,10 @@ export function applyAugmentAcquisitionLifecycle({
     const owner = engine.players.find((candidate) => candidate.userId === userId);
     const waiting = owner?.pieces.filter((piece) => piece.status === "WAITING") ?? [];
     if (waiting.length > 0) {
-      const target = waiting[randomInt(waiting.length)] ?? waiting[0];
+      const target = acquisitionChoice?.pieceId
+        ? waiting.find((piece) => piece.id === acquisitionChoice.pieceId)
+        : waiting[randomInt(waiting.length)] ?? waiting[0];
+      if (!target) throw new Error("토끼와 거북이로 선택한 대기 말을 찾지 못했습니다.");
       engine = applyTurtleAndHarePlacement(engine, userId, target.id);
     }
   }
@@ -174,6 +204,7 @@ export function applyAugmentAcquisitionLifecycle({
       ownedByUser,
       setupsByUser,
       randomNext,
+      acquisitionChoice?.pieceId,
     ).engine;
   }
 
