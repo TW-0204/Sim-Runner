@@ -9,6 +9,7 @@ import {
   type GameActionContext,
   type GameMoveArgs,
 } from "@/lib/game/action-lifecycle";
+import { applyCaptureChoice } from "@/lib/game/capture-choice";
 import {
   applyGachaMachine,
   applyWormholeTurn,
@@ -32,7 +33,7 @@ import {
 import { executeDoRerollLifecycle, executeRollLifecycle, type RollLifecycleResult } from "@/lib/game/roll-lifecycle";
 import { applySelfRelianceSplit } from "@/lib/game/self-reliance";
 import { saveResultForTomorrow } from "@/lib/game/tomorrow";
-import type { GameEngineState, PieceState, RollFace, RollToken } from "@/lib/game/types";
+import type { GameEngineState, RollFace, RollToken } from "@/lib/game/types";
 import { resolveCandidateActions, type CandidateAction } from "./candidate-action";
 import type { SimulationActionKind } from "./triggers";
 
