@@ -84,6 +84,7 @@ function betrayalRandomForSelectedPiece(
   return () => {
     if (!firstCall) return random();
     firstCall = false;
+    random();
     return Math.min(0.999999999999, (index + 0.5) / waiting.length);
   };
 }
