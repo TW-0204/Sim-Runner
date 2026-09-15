@@ -76,20 +76,6 @@ function selectReplacementPiece(engine: GameEngineState, userId: string, augment
   return rankedPiece(policy.preferNonFinished && nonFinished.length > 0 ? nonFinished : eligible);
 }
 
-export function initializeAugmentSetup(
-  engine: GameEngineState,
-  userId: string,
-  augmentId: string,
-  setupsByUser: Record<string, PlayerAugmentSetups>,
-) {
-  const policy = getAugmentRuntime(augmentId)?.setup;
-  if (policy?.kind !== "piece") return;
-  const piece = selectReplacementPiece(engine, userId, augmentId);
-  if (!piece) return;
-  setupsByUser[userId] ??= {};
-  setupsByUser[userId][augmentId] = { pieceId: piece.id };
-}
-
 function pieceSetupIsValid(
   engine: GameEngineState,
   userId: string,
@@ -98,6 +84,22 @@ function pieceSetupIsValid(
 ) {
   if (!pieceId) return false;
   return eligiblePieces(engine, userId, augmentId).some((piece) => piece.id === pieceId);
+}
+
+export function initializeAugmentSetup(
+  engine: GameEngineState,
+  userId: string,
+  augmentId: string,
+  setupsByUser: Record<string, PlayerAugmentSetups>,
+) {
+  const policy = getAugmentRuntime(augmentId)?.setup;
+  if (policy?.kind !== "piece") return;
+  const selectedPieceId = setupsByUser[userId]?.[augmentId]?.pieceId;
+  if (pieceSetupIsValid(engine, userId, augmentId, selectedPieceId)) return;
+  const piece = selectReplacementPiece(engine, userId, augmentId);
+  if (!piece) return;
+  setupsByUser[userId] ??= {};
+  setupsByUser[userId][augmentId] = { pieceId: piece.id };
 }
 
 /**
